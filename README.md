@@ -1,6 +1,10 @@
 # MTProxy
 Simple MT-Proto proxy
 
+## Install
+
+Refer to [blog post](https://www.getpagespeed.com/server-setup/mtproxy) on how to quickly install and run MTProxy on your server.
+
 ## Building
 Install dependencies, you would need common set of tools for building from source, and development packages for `openssl` and `zlib`.
 
