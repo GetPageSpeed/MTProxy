@@ -1,9 +1,15 @@
-# MTProxy
-Simple MT-Proto proxy
+# MTProxy by GetPageSpeed
+
+Simple MT-Proto proxy.
+
+**This is a fork of MTProxy which includes various improvements and fixes that upstream has not merged due to abandonding their repository.
+Most of these fixes aim for stable running of MTProxy in production without surprises.**
 
 ## Install
 
-Refer to [blog post](https://www.getpagespeed.com/server-setup/mtproxy) on how to quickly install and run MTProxy on your server.
+Refer to the [blog post](https://www.getpagespeed.com/server-setup/mtproxy) on how to quickly install and run MTProxy on your server, using
+prebuilt RPM packages and a repository for easy updates.
+
 
 ## Building
 Install dependencies, you would need common set of tools for building from source, and development packages for `openssl` and `zlib`.
@@ -12,7 +18,7 @@ On Debian/Ubuntu:
 ```bash
 apt install git curl build-essential libssl-dev zlib1g-dev
 ```
-On CentOS/RHEL:
+On CentOS/RHEL (not advisable, use packages mentioned above instead):
 ```bash
 yum install openssl-devel zlib-devel
 yum groupinstall "Development Tools"
