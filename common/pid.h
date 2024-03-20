@@ -29,14 +29,14 @@
 struct process_id {
   unsigned ip;
   short port;
-  unsigned int pid;
+  unsigned short pid;
   int utime;
 };
 
 struct process_id_ext {
   unsigned ip;
   short port;
-  unsigned int pid;
+  unsigned short pid;
   int utime;
   int actor_id;
 };
