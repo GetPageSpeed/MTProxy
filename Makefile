@@ -12,8 +12,24 @@ ifeq ($m, 64)
 ARCH = -m64
 endif
 
-CFLAGS = $(ARCH) -O3 -std=gnu11 -Wall -mpclmul -march=core2 -mfpmath=sse -mssse3 -fno-strict-aliasing -fno-strict-overflow -fwrapv -DAES=1 -DCOMMIT=\"${COMMIT}\" -D_GNU_SOURCE=1 -D_FILE_OFFSET_BITS=64
-LDFLAGS = $(ARCH) -ggdb -rdynamic -lm -lrt -lcrypto -lz -lpthread -lcrypto
+# Determine the architecture using arch
+ARCH := $(shell arch)
+
+# Default CFLAGS and LDFLAGS
+COMMON_CFLAGS := -O3 -std=gnu11 -Wall -fno-strict-aliasing -fno-strict-overflow -fwrapv -DAES=1 -DCOMMIT=\"${COMMIT}\" -D_GNU_SOURCE=1 -D_FILE_OFFSET_BITS=64
+COMMON_LDFLAGS := -ggdb -rdynamic -lm -lrt -lcrypto -lz -lpthread -lcrypto
+
+# Architecture-specific CFLAGS
+ifeq ($(ARCH), x86_64)
+CFLAGS := $(COMMON_CFLAGS) -mpclmul -march=core2 -mfpmath=sse -mssse3
+else ifeq ($(ARCH), aarch64)
+CFLAGS := $(COMMON_CFLAGS)
+else ifeq ($(ARCH), arm64)
+CFLAGS := $(COMMON_CFLAGS)
+endif
+
+# Architecture-specific LDFLAGS (if needed, here kept same for simplicity)
+LDFLAGS := $(COMMON_LDFLAGS)
 
 LIB = ${OBJ}/lib
 CINCLUDE = -iquote common -iquote .
