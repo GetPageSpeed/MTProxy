@@ -5,6 +5,13 @@ Simple MT-Proto proxy.
 **This is a fork of MTProxy which includes various improvements and fixes that upstream has not merged due to abandonding their repository.
 Most of these fixes aim for stable running of MTProxy in production without surprises.**
 
+> [!TIP]
+> Chỉ cần copy và paste đoạn này vào “Saved Messages” của bạn, gửi cho chính bạn, và click vào link trong Telegram để thiết lập proxy:
+
+```
+tg://proxy?server=mtproxy.getpagespeed.com&port=8444&secret=d7f04aa6631130af1a153e7a5e12c291
+```
+
 ## Install
 
 Refer to the [blog post](https://www.getpagespeed.com/server-setup/mtproxy) on how to quickly install and run MTProxy on your server, using
