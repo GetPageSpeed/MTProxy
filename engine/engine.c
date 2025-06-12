@@ -49,6 +49,8 @@
 #include "common/server-functions.h"
 #include "common/tl-parse.h"
 
+#include "mtproto/mtproto-config.h"
+
 #include "engine/engine.h"
 #include "engine/engine-net.h"
 #include "engine/engine-rpc.h"
