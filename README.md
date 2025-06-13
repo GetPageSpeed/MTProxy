@@ -124,21 +124,5 @@ systemctl enable MTProxy.service
 ```
 
 ## Docker image
-
-### GitHub Container Registry (Recommended)
-We provide automatically built Docker images via GitHub Actions:
-
-```bash
-# Quick start with auto-generated secret
-docker run -d --name mtproxy -p 443:443 -p 8888:8888 ghcr.io/getpagespeed/mtproxy:latest
-
-# Or with custom secret
-SECRET=$(head -c 16 /dev/urandom | xxd -ps)
-docker run -d --name mtproxy -p 443:443 -p 8888:8888 -e SECRET=$SECRET ghcr.io/getpagespeed/mtproxy:latest
-```
-
-For detailed Docker setup instructions, see [README-Docker.md](README-Docker.md).
-
-### Official Telegram Image
 Telegram is also providing [official Docker image](https://hub.docker.com/r/telegrammessenger/proxy/).
 Note: the image is outdated.
