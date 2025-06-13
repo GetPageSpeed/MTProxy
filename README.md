@@ -14,8 +14,20 @@ tg://proxy?server=mtproxy.getpagespeed.com&port=8444&secret=d7f04aa6631130af1a15
 
 ## Install
 
-Refer to the [blog post](https://www.getpagespeed.com/server-setup/mtproxy) on how to quickly install and run MTProxy on your server, using
-prebuilt RPM packages and a repository for easy updates.
+### Quick Install (Recommended)
+
+For the easiest installation with prebuilt RPM packages, automatic updates, and complete configuration:
+
+**👉 [GetPageSpeed MTProxy Installation Guide](https://www.getpagespeed.com/server-setup/mtproxy)**
+
+This includes:
+- One-command installation via RPM repository
+- Automatic configuration file generation
+- SystemD service setup
+- Firewall configuration
+- Fake TLS setup instructions
+
+### Manual Build (Advanced)
 
 
 ## Building
@@ -77,16 +89,61 @@ Also feel free to check out other options using `mtproto-proxy --help`.
 7. Set received tag with arguments: `-P <proxy tag>`
 8. Enjoy.
 
-## Random padding
-Due to some ISPs detecting MTProxy by packet sizes, random padding is
-added to packets if such mode is enabled.
+## Transport Modes and Secret Prefixes
 
-It's only enabled for clients which request it.
+MTProxy supports different transport modes that provide various levels of obfuscation:
 
-Add `dd` prefix to secret (`cafe...babe` => `ddcafe...babe`) to enable
-this mode on client side.
+> 💡 **For complete setup instructions including RPM packages**, see the [GetPageSpeed MTProxy installation guide](https://www.getpagespeed.com/server-setup/mtproxy)
 
-Adding argument "-R" to the command line will cause MTProxy to allow connections only from the clients with random padding mode enabled.
+### DD Mode (Random Padding)
+Due to some ISPs detecting MTProxy by packet sizes, random padding is added to packets when this mode is enabled.
+
+**Client Setup**: Add `dd` prefix to secret (`cafe...babe` => `ddcafe...babe`)
+
+**Server Setup**: Use `-R` argument to allow only clients with random padding enabled
+
+> 📖 **See also**: [GetPageSpeed guide - DD mode setup](https://www.getpagespeed.com/server-setup/mtproxy)
+
+### EE Mode (Fake-TLS + Padding)
+
+EE mode provides enhanced obfuscation by mimicking TLS 1.3 connections, making MTProxy traffic harder to detect and block.
+
+**Server Setup**:
+1. **Add domain configuration**: Choose a website that supports TLS 1.3 (e.g., `www.google.com`, `www.cloudflare.com`)
+   ```bash
+   ./mtproto-proxy -u nobody -p 8888 -H 443 -S <secret> -D www.google.com --aes-pwd proxy-secret proxy-multi.conf -M 1
+   ```
+
+2. **Get domain HEX dump**:
+   ```bash
+   echo -n www.google.com | xxd -plain
+   # Output: 7777772e676f6f676c652e636f6d
+   ```
+
+**Client Setup**:
+Use the format: `ee` + server_secret + domain_hex
+
+**Example**:
+- Server secret: `cafe1234567890abcdef1234567890ab`
+- Domain: `www.google.com` 
+- Domain HEX: `7777772e676f6f676c652e636f6d`
+- **Client secret**: `eecafe1234567890abcdef1234567890ab7777772e676f6f676c652e636f6d`
+
+**Quick Generation**:
+```bash
+# Generate complete client secret automatically
+SECRET="cafe1234567890abcdef1234567890ab"
+DOMAIN="www.google.com"
+echo -n "ee${SECRET}" && echo -n $DOMAIN | xxd -plain
+```
+
+**Benefits**:
+- ✅ **Traffic appears as TLS 1.3**: Harder to detect and block
+- ✅ **Works with modern clients**: Desktop, mobile, and web clients
+- ✅ **Domain flexibility**: Choose any TLS 1.3-capable domain
+- ✅ **Better censorship resistance**: More sophisticated obfuscation
+
+> 📖 **Complete Fake TLS setup guide**: [GetPageSpeed MTProxy - Fake TLS section](https://www.getpagespeed.com/server-setup/mtproxy#fake-tls)
 
 ## Systemd example configuration
 1. Create systemd service file (it's standard path for the most Linux distros, but you should check it before):
@@ -144,11 +201,14 @@ docker run -d \
 #### Environment Variables
 
 - `SECRET`: User secret for proxy connections (auto-generated if not provided)
+  - **For DD mode**: Use `dd` + 32 hex digits (e.g., `ddcafe1234567890abcdef1234567890`)
+  - **For EE mode**: Use `ee` + 32 hex digits + domain hex (e.g., `eecafe1234567890abcdef1234567890ab7777772e676f6f676c652e636f6d`)
+  - **Standard mode**: Just 32 hex digits without prefix
 - `PORT`: Port for client connections (default: 443)
 - `STATS_PORT`: Port for statistics endpoint (default: 8888)
 - `WORKERS`: Number of worker processes (default: 1)
 - `PROXY_TAG`: Proxy tag from [@MTProxybot](https://t.me/MTProxybot)
-- `RANDOM_PADDING`: Enable random padding mode (true/false, default: false)
+- `RANDOM_PADDING`: Enable random padding only mode (true/false, default: false)
 
 #### Getting Statistics
 
