@@ -123,6 +123,86 @@ systemctl status MTProxy.service
 systemctl enable MTProxy.service
 ```
 
-## Docker image
-Telegram is also providing [official Docker image](https://hub.docker.com/r/telegrammessenger/proxy/).
-Note: the image is outdated.
+## Docker
+
+### Using Pre-built Docker Image
+
+The easiest way to run MTProxy is using our pre-built Docker image from GitHub Container Registry:
+
+```bash
+docker run -d \
+  --name mtproxy \
+  -p 443:443 \
+  -p 8888:8888 \
+  -e SECRET=$(head -c 16 /dev/urandom | xxd -ps) \
+  -e PROXY_TAG=your_proxy_tag_here \
+  -v mtproxy-data:/opt/mtproxy/data \
+  --restart unless-stopped \
+  ghcr.io/getpagespeed/mtproxy:latest
+```
+
+#### Environment Variables
+
+- `SECRET`: User secret for proxy connections (auto-generated if not provided)
+- `PORT`: Port for client connections (default: 443)
+- `STATS_PORT`: Port for statistics endpoint (default: 8888)
+- `WORKERS`: Number of worker processes (default: 1)
+- `PROXY_TAG`: Proxy tag from [@MTProxybot](https://t.me/MTProxybot)
+- `RANDOM_PADDING`: Enable random padding mode (true/false, default: false)
+
+#### Getting Statistics
+
+```bash
+curl http://localhost:8888/stats
+```
+
+### Using Docker Compose
+
+Create a `.env` file:
+```bash
+SECRET=your_secret_here
+PROXY_TAG=your_proxy_tag_here
+RANDOM_PADDING=false
+```
+
+Then run:
+```bash
+docker-compose up -d
+```
+
+### Building Your Own Image
+
+If you want to build the image yourself:
+
+```bash
+docker build -t mtproxy .
+docker run -d \
+  --name mtproxy \
+  -p 443:443 \
+  -p 8888:8888 \
+  -e SECRET=your_secret_here \
+  mtproxy
+```
+
+### Health Check
+
+The Docker container includes a health check that monitors the statistics endpoint. You can check the container health with:
+
+```bash
+docker ps
+# Look for the health status in the STATUS column
+```
+
+### Volume Mounting
+
+The container persists configuration files in `/opt/mtproxy/data`. Mount a volume to persist data across container restarts:
+
+```bash
+-v /path/to/host/data:/opt/mtproxy/data
+```
+
+### Available Tags
+
+- `ghcr.io/getpagespeed/mtproxy:latest` - Latest stable build from master branch
+- `ghcr.io/getpagespeed/mtproxy:master` - Latest build from master branch
+- `ghcr.io/getpagespeed/mtproxy:v*` - Specific version tags (when available)
