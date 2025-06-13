@@ -1,0 +1,23 @@
+# Git
+.git
+.gitignore
+
+# Build artifacts
+objs/
+dep/
+
+# IDE
+.idea/
+.vscode/
+
+# Documentation
+*.md
+GPLv2
+LGPLv2
+
+# Docker
+Dockerfile
+.dockerignore
+
+# GitHub Actions
+.github/ 

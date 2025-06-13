@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  mtproxy:
+    build: .
+    ports:
+      - "443:443"
+      - "8888:8888"
+    environment:
+      # Generate a random secret: head -c 16 /dev/urandom | xxd -ps
+      - SECRET=${SECRET:-}
+      # Port for client connections
+      - PORT=443
+      # Port for statistics
+      - STATS_PORT=8888
+      # Number of workers
+      - WORKERS=1
+      # Proxy tag from @MTProxybot
+      - PROXY_TAG=${PROXY_TAG:-}
+      # Enable random padding (true/false)
+      - RANDOM_PADDING=${RANDOM_PADDING:-false}
+    volumes:
+      # Persist config files
+      - ./data:/opt/mtproxy/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/stats"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s 
