@@ -195,6 +195,7 @@ docker run -d \
   -e PROXY_TAG=your_proxy_tag_here \
   -v mtproxy-data:/opt/mtproxy/data \
   --restart unless-stopped \
+  --platform linux/amd64 \
   ghcr.io/getpagespeed/mtproxy:latest
 ```
 
