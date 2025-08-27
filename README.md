@@ -72,12 +72,12 @@ head -c 16 /dev/urandom | xxd -ps
 ```
 4. Run `mtproto-proxy`:
 ```bash
-./mtproto-proxy -u nobody -p 8888 -H 443 -S <secret> --aes-pwd proxy-secret proxy-multi.conf -M 1
+./mtproto-proxy -u nobody -p 8888 -H 443 -S <secret> --http-stats --aes-pwd proxy-secret proxy-multi.conf -M 1
 ```
 ... where:
 - `nobody` is the username. `mtproto-proxy` calls `setuid()` to drop privilegies.
 - `443` is the port, used by clients to connect to the proxy.
-- `8888` is the local port. You can use it to get statistics from `mtproto-proxy`. Like `wget localhost:8888/stats`. You can only get this stat via loopback.
+- `8888` is the local port for statistics (requires `--http-stats`). Like `curl http://localhost:8888/stats`. You can only get this stat via loopback.
 - `<secret>` is the secret generated at step 3. Also you can set multiple secrets: `-S <secret1> -S <secret2>`.
 - `proxy-secret` and `proxy-multi.conf` are obtained at steps 1 and 2.
 - `1` is the number of workers. You can increase the number of workers, if you have a powerful server.
@@ -111,7 +111,7 @@ EE mode provides enhanced obfuscation by mimicking TLS 1.3 connections, making M
 **Server Setup**:
 1. **Add domain configuration**: Choose a website that supports TLS 1.3 (e.g., `www.google.com`, `www.cloudflare.com`)
    ```bash
-   ./mtproto-proxy -u nobody -p 8888 -H 443 -S <secret> -D www.google.com --aes-pwd proxy-secret proxy-multi.conf -M 1
+   ./mtproto-proxy -u nobody -p 8888 -H 443 -S <secret> -D www.google.com --http-stats --aes-pwd proxy-secret proxy-multi.conf -M 1
    ```
 
 2. **Get domain HEX dump**:
@@ -160,6 +160,7 @@ After=network.target
 Type=simple
 WorkingDirectory=/opt/MTProxy
 ExecStart=/opt/MTProxy/mtproto-proxy -u nobody -p 8888 -H 443 -S <secret> -P <proxy tag> <other params>
+ExecStart=/opt/MTProxy/mtproto-proxy -u nobody -p 8888 -H 443 -S <secret> --http-stats -P <proxy tag> <other params>
 Restart=on-failure
 
 [Install]

@@ -76,7 +76,7 @@ PROXY_TAG=\${PROXY_TAG:-}
 RANDOM_PADDING=\${RANDOM_PADDING:-}
 
 # Build command
-CMD="./mtproto-proxy -u mtproxy -p \$STATS_PORT -H \$PORT -S \$SECRET"
+CMD="./mtproto-proxy -u mtproxy -p \$STATS_PORT -H \$PORT -S \$SECRET --http-stats"
 
 if [ -n "\$PROXY_TAG" ]; then
     CMD="\$CMD -P \$PROXY_TAG"
