@@ -1,5 +1,5 @@
 # Use Ubuntu as base image for building
-FROM ubuntu:22.04 as builder
+FROM ubuntu:22.04 AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \

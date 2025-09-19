@@ -678,7 +678,7 @@ static char dows [] = "SunMonTueWedThuFriSatEar";
 int dd [] =
 {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 
-void gen_http_date (char date_buffer[29], int time) {
+void gen_http_date (char date_buffer[HTTP_DATE_LEN + 1], int time) {
   int day, mon, year, hour, min, sec, xd, i, dow;
   if (time < 0) time = 0;
   sec = time % 60;
@@ -721,10 +721,11 @@ void gen_http_date (char date_buffer[29], int time) {
   assert (day >= 1 && day <= 31 && mon >=0 && mon <= 11 &&
       year >= 1970 && year <= 2039);
 
-  sprintf (date_buffer, "%.3s, %.2d %.3s %d %.2d:%.2d:%.2d GM", 
+  // Produce exactly "Thu, 01 Jan 1970 00:00:00 GMT" (29 chars) + NUL
+  // Ensure safe writing and explicit "GMT" timezone (not "GM" + manual 'T').
+  snprintf (date_buffer, HTTP_DATE_LEN + 1, "%.3s, %.2d %.3s %d %.2d:%.2d:%.2d GMT",
       dows + dow * 3, day, months + mon * 3, year,
       hour, min, sec);
-  date_buffer[28] = 'T';
 }
 
 int gen_http_time (char *date_buffer, int *time) {

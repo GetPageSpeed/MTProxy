@@ -763,8 +763,10 @@ unsigned get_my_ipv4 (void) {
       my_iface = ifa->ifa_name;
     }
   }
+  unsigned inv_mask = ~my_netmask;
+  int prefix_len = (inv_mask == 0) ? 32 : __builtin_clz (inv_mask);
   vkprintf (1, "using main IP %d.%d.%d.%d/%d at interface %s\n", (my_ip >> 24), (my_ip >> 16) & 255, (my_ip >> 8) & 255, my_ip & 255,
-            __builtin_clz (~my_netmask), my_iface ?: "(none)"); 
+            prefix_len, my_iface ?: "(none)"); 
   freeifaddrs (ifa_first);
   return my_ip;
 }
@@ -809,9 +811,9 @@ int get_my_ipv6 (unsigned char ipv6[16]) {
   while (m < 128 && mask[m / 8] == 0xff) { m += 8; }
   if (m < 128) {
     unsigned char c = mask[m / 8];
-    while (c & 1) {
-      c /= 2;
-      m ++;
+    while ((c & 0x80) && m < 128) {
+      c <<= 1;
+      m++;
     }
   }
   vkprintf (1, "using main IP " IPV6_PRINT_STR "/%d at interface %s\n", IPV6_TO_PRINT (ipv6), m, my_iface);
