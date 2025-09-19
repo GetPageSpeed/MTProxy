@@ -4,28 +4,28 @@ EXE = ${OBJ}/bin
 
 COMMIT := $(shell git log -1 --pretty=format:"%H")
 
-ARCH =
-ifeq ($m, 32)
-ARCH = -m32
+BITNESS_FLAGS =
+ifeq ($(m), 32)
+BITNESS_FLAGS = -m32
 endif
-ifeq ($m, 64)
-ARCH = -m64
+ifeq ($(m), 64)
+BITNESS_FLAGS = -m64
 endif
 
-# Determine the architecture using arch
-ARCH := $(shell arch)
+# Determine the host architecture using arch
+HOST_ARCH := $(shell arch)
 
 # Default CFLAGS and LDFLAGS
 COMMON_CFLAGS := -O3 -std=gnu11 -Wall -fno-strict-aliasing -fno-strict-overflow -fwrapv -DAES=1 -DCOMMIT=\"${COMMIT}\" -D_GNU_SOURCE=1 -D_FILE_OFFSET_BITS=64
-COMMON_LDFLAGS := -ggdb -rdynamic -lm -lrt -lcrypto -lz -lpthread -lcrypto
+COMMON_LDFLAGS := -ggdb -rdynamic -lm -lrt -lcrypto -lz -lpthread
 
 # Architecture-specific CFLAGS
-ifeq ($(ARCH), x86_64)
-CFLAGS := $(COMMON_CFLAGS) -mpclmul -march=core2 -mfpmath=sse -mssse3
-else ifeq ($(ARCH), aarch64)
-CFLAGS := $(COMMON_CFLAGS)
-else ifeq ($(ARCH), arm64)
-CFLAGS := $(COMMON_CFLAGS)
+ifeq ($(HOST_ARCH), x86_64)
+CFLAGS := $(COMMON_CFLAGS) -mpclmul -march=core2 -mfpmath=sse -mssse3 $(BITNESS_FLAGS)
+else ifeq ($(HOST_ARCH), aarch64)
+CFLAGS := $(COMMON_CFLAGS) $(BITNESS_FLAGS)
+else ifeq ($(HOST_ARCH), arm64)
+CFLAGS := $(COMMON_CFLAGS) $(BITNESS_FLAGS)
 endif
 
 # Architecture-specific LDFLAGS (if needed, here kept same for simplicity)
@@ -43,7 +43,7 @@ DEPDIRS := ${DEP} $(addprefix ${DEP}/,${PROJECTS})
 ALLDIRS := ${DEPDIRS} ${OBJDIRS}
 
 
-.PHONY:	all clean 
+.PHONY:	all clean tests docker-image-amd64 docker-run-help-amd64
 
 EXELIST	:= ${EXE}/mtproto-proxy
 
@@ -116,4 +116,18 @@ clean:
 	rm -rf ${OBJ} ${DEP} ${EXE} || true
 
 force-clean: clean
+
+# Docker-based amd64 build and smoke test
+DOCKER ?= docker
+DOCKER_PLATFORM ?= linux/amd64
+DOCKER_TEST_IMAGE ?= mtproxy:test-amd64
+
+docker-image-amd64:
+	${DOCKER} buildx build --platform ${DOCKER_PLATFORM} --load -t ${DOCKER_TEST_IMAGE} .
+
+docker-run-help-amd64: docker-image-amd64
+	${DOCKER} run --rm --platform ${DOCKER_PLATFORM} --entrypoint /opt/mtproxy/mtproto-proxy ${DOCKER_TEST_IMAGE} 2>&1 | grep -q "Invoking engine"
+
+tests: docker-run-help-amd64
+	@echo "Tests passed: amd64 image builds and binary starts (--help)."
 

@@ -866,7 +866,10 @@ void complete_job (job_t job) {
 static void job_interrupt_signal_handler (const int sig) {
   char buffer[256];
   if (verbosity >= 2) {
-    kwrite (2, buffer, sprintf (buffer, "SIGRTMAX-7 (JOB INTERRUPT) caught in thread #%d running job %p.\n", this_job_thread ? this_job_thread->id : -1, this_job_thread ? this_job_thread->current_job : 0));
+    int n = snprintf (buffer, sizeof(buffer), "SIGRTMAX-7 (JOB INTERRUPT) caught in thread #%d running job %p.\n", this_job_thread ? this_job_thread->id : -1, this_job_thread ? this_job_thread->current_job : 0);
+    if (n < 0) { n = 0; }
+    if (n > (int)sizeof(buffer)) { n = (int)sizeof(buffer); }
+    kwrite (2, buffer, n);
   }
 }
 

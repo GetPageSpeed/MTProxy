@@ -22,7 +22,11 @@
 #include <stdio.h>
 
 int read_proc_stats (int pid, int tid, struct proc_stats *s) { 
-  const char *format = "%d %s %c %d %d %d %d %d %lu %lu %lu %lu %lu %lu %lu %ld %ld %ld %ld %ld %ld %lu %lu %ld %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %d %d %lu %lu %llu"; 
+  /*
+   * The comm field is enclosed in parentheses and may contain spaces.
+   * Parse it as "(%[^)])" instead of "%s" to avoid truncation or misalignment.
+   */
+  const char *format = "%d (%255[^)]) %c %d %d %d %d %d %lu %lu %lu %lu %lu %lu %lu %ld %ld %ld %ld %ld %ld %lu %lu %ld %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %d %d %lu %lu %llu"; 
 
   char buf[256]; 
   if (tid <= 0) {

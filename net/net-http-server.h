@@ -109,7 +109,7 @@ extern char *extra_http_response_headers;
 int get_http_header (const char *qHeaders, const int qHeadersLen, char *buffer, int b_len, const char *arg_name, const int arg_len);
 
 #define	HTTP_DATE_LEN	29
-void gen_http_date (char date_buffer[29], int time);
+void gen_http_date (char date_buffer[HTTP_DATE_LEN + 1], int time);
 int gen_http_time (char *date_buffer, int *time);
 char *cur_http_date (void);
 //int write_basic_http_header (connection_job_t c, int code, int date, int len, const char *add_header, const char *content_type);
