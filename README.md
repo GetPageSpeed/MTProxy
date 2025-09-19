@@ -89,6 +89,69 @@ Also feel free to check out other options using `mtproto-proxy --help`.
 7. Set received tag with arguments: `-P <proxy tag>`
 8. Enjoy.
 
+## Using IPv6
+
+MTProxy supports IPv6. To enable it, pass the `-6` flag and specify only port numbers to `-H` (do not include an address like `[::]:443`).
+
+### Example (direct run)
+```bash
+./mtproto-proxy -6 -u nobody -p 8888 -H 443 -S <secret> --http-stats --aes-pwd proxy-secret proxy-multi.conf -M 1
+```
+
+- `-6` enables IPv6 listening. The proxy binds to `::` (all IPv6 interfaces). On most systems this also accepts IPv4 connections on the same port (dual-stack), unless the kernel forces IPv6-only.
+- `-H` accepts a comma-separated list of ports only (e.g., `-H 80,443`). Do not pass IP literals to `-H`.
+- Binding to a specific IPv6 address is not currently supported. If you must restrict which address is reachable, use a firewall (ip6tables/nftables/security groups).
+
+### Client side
+- You can use either a hostname with an AAAA record or a raw IPv6 address.
+- When sharing links, prefer a hostname with an AAAA record. Some clients may not accept raw IPv6 literals in `tg://` links.
+
+Examples:
+- Hostname: `tg://proxy?server=proxy.example.com&port=443&secret=<secret>` (with AAAA record on `proxy.example.com`).
+- Raw IPv6 (may not be supported by all clients): `tg://proxy?server=[2001:db8::1]&port=443&secret=<secret>`
+
+### Quick checks
+- Verify the proxy listens on IPv6:
+  ```bash
+  ss -ltnp | grep :443
+  # Expect to see :::443 among listeners
+  ```
+- Test locally (stats endpoint):
+  ```bash
+  curl -6 http://[::1]:8888/stats
+  ```
+
+### Troubleshooting IPv6
+- Ensure IPv6 is enabled on the host:
+  ```bash
+  sysctl net.ipv6.conf.all.disable_ipv6
+  # should be 0
+  ```
+- Firewalls/security groups must allow IPv6 on the chosen port (separate from IPv4 rules).
+- If IPv4 stops working after enabling `-6`, your system might enforce IPv6-only sockets (V6ONLY). Check `net.ipv6.bindv6only` and firewall rules.
+- Use a hostname with an AAAA record to avoid client parsing issues with IPv6 literals in links.
+
+### Systemd example (IPv6)
+```ini
+[Unit]
+Description=MTProxy (IPv6)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/MTProxy
+ExecStart=/opt/MTProxy/mtproto-proxy -6 -u nobody -p 8888 -H 443 -S <secret> --http-stats -P <proxy tag> --aes-pwd proxy-secret proxy-multi.conf -M 1
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Docker notes (IPv6)
+- Ensure Docker daemon has IPv6 enabled and the host has routable IPv6.
+- Port publishing must include IPv6 (Docker binds to IPv6 only if daemon IPv6 is enabled). See Docker docs for `daemon.json` (`"ipv6": true`, `"fixed-cidr-v6": "…/64"`).
+- The provided image’s default entrypoint does not add `-6`. To use IPv6, either run MTProxy on the host, or build/override the container command to include `-6`.
+
 ## Transport Modes and Secret Prefixes
 
 MTProxy supports different transport modes that provide various levels of obfuscation:
