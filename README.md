@@ -152,6 +152,64 @@ WantedBy=multi-user.target
 - Port publishing must include IPv6 (Docker binds to IPv6 only if daemon IPv6 is enabled). See Docker docs for `daemon.json` (`"ipv6": true`, `"fixed-cidr-v6": "…/64"`).
 - The provided image’s default entrypoint does not add `-6`. To use IPv6, either run MTProxy on the host, or build/override the container command to include `-6`.
 
+## VPN Compatibility
+
+MTProxy works with VPN by default. However, if you experience connectivity issues when your VPN is active, check your configuration.
+
+### Default Behavior (VPN-friendly)
+
+By default, MTProxy:
+- Listens on all network interfaces (`0.0.0.0` for IPv4, `::` for IPv6)
+- Routes outbound connections automatically through the system's default route (including VPN tunnels)
+
+**This means you don't need any special configuration for VPN compatibility.**
+
+### The `--address` Option
+
+The `--address` option binds **outbound connections** (connections from the proxy to Telegram servers) to a specific IP address.
+
+**When to use `--address`:**
+- Multi-homed servers with multiple public IPs where you need to control which IP is used for outbound connections
+- NAT scenarios where the local address differs from the global address (use with `--nat-info`)
+- Specific routing requirements
+
+**When NOT to use `--address`:**
+- ❌ When running a VPN on the same server
+- ❌ On most single-IP servers (let the system route automatically)
+- ❌ When you want traffic to go through a VPN tunnel
+
+**Example with `--address`:**
+```bash
+./mtproto-proxy -u nobody -p 8888 -H 443 -S <secret> --address 10.0.1.5 --aes-pwd proxy-secret proxy-multi.conf -M 1
+```
+
+### Troubleshooting VPN Issues
+
+If the proxy doesn't work when your VPN is active:
+
+1. **Remove the `--address` option** if you're using it. The default behavior routes through VPN automatically.
+
+2. **Check your VPN routing table**:
+   ```bash
+   ip route show
+   # Verify that default route points to your VPN interface
+   ```
+
+3. **Verify the proxy can reach Telegram servers**:
+   ```bash
+   # From the server where MTProxy runs
+   curl -I https://core.telegram.org/
+   ```
+
+4. **Check firewall rules** - ensure your VPN doesn't block the proxy port:
+   ```bash
+   # Allow incoming connections on port 443
+   iptables -A INPUT -p tcp --dport 443 -j ACCEPT
+   ```
+
+5. **For split-tunnel VPNs** - ensure Telegram's IP ranges route through the tunnel, not the regular interface.
+
+
 ## Transport Modes and Secret Prefixes
 
 MTProxy supports different transport modes that provide various levels of obfuscation:
