@@ -19,6 +19,8 @@ services:
       - PROXY_TAG=${PROXY_TAG:-}
       # Enable random padding (true/false)
       - RANDOM_PADDING=${RANDOM_PADDING:-false}
+      # Domain for Fake-TLS + Padding
+      - EE_DOMAIN=${EE_DOMAIN:-}
     volumes:
       # Persist config files
       - ./data:/opt/mtproxy/data

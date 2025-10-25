@@ -274,6 +274,7 @@ docker run -d \
 - `WORKERS`: Number of worker processes (default: 1)
 - `PROXY_TAG`: Proxy tag from [@MTProxybot](https://t.me/MTProxybot)
 - `RANDOM_PADDING`: Enable random padding only mode (true/false, default: false)
+- `EE_DOMAIN`: Domain for EE Mode (Fake-TLS + Padding), e.g. `www.google.com`
 
 #### Getting Statistics
 

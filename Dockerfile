@@ -74,6 +74,7 @@ STATS_PORT=\${STATS_PORT:-8888}
 WORKERS=\${WORKERS:-1}
 PROXY_TAG=\${PROXY_TAG:-}
 RANDOM_PADDING=\${RANDOM_PADDING:-}
+EE_DOMAIN=\${EE_DOMAIN:-}
 
 # Build command
 CMD="./mtproto-proxy -u mtproxy -p \$STATS_PORT -H \$PORT -S \$SECRET --http-stats"
@@ -84,6 +85,10 @@ fi
 
 if [ "\$RANDOM_PADDING" = "true" ]; then
     CMD="\$CMD -R"
+fi
+
+if [ -n "\$EE_DOMAIN" ]; then
+    CMD="\$CMD -D \$EE_DOMAIN"
 fi
 
 CMD="\$CMD --aes-pwd proxy-secret proxy-multi.conf -M \$WORKERS"
