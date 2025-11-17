@@ -1110,7 +1110,7 @@ int tcp_rpcs_compact_parse_execute (connection_job_t C) {
         assert (rwm_fetch_lookup (&c->in, &packet_len, 4) == 4);
 
         c->left_tls_packet_length -= 64; // skip header length
-      } else if (packet_len == *(int *)"\x16\x03\x01\x02" && ext_secret_cnt > 0 && allow_only_tls) {
+      } else if ((packet_len & 0xFFFFFF) == 0x010316 && (packet_len >> 24) >= 2 && ext_secret_cnt > 0 && allow_only_tls) {
         unsigned char header[5];
         assert (rwm_fetch_lookup (&c->in, header, 5) == 5);
         min_len = 5 + 256 * header[3] + header[4];
