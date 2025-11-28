@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Build and Run Tests
+      env:
+        MTPROXY_SECRET: ${{ secrets.MTPROXY_SECRET }}
+      run: |      
+        if [ -z "$MTPROXY_SECRET" ]; then
+          export MTPROXY_SECRET=$(head -c 16 /dev/urandom | xxd -ps)
+          echo "Generated random MTPROXY_SECRET for testing"
+        fi
+        
+        make test
+
+  test-direct:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libssl-dev zlib1g-dev git curl vim-common python3 python3-pip python3-venv netcat-openbsd
+        python3 -m venv .venv
+        source .venv/bin/activate
+        pip install requests
+
+    - name: Build MTProxy
+      run: |
+        make clean && make -j$(nproc)
+
+    - name: Setup and Run Proxy
+      run: |
+        # Debug: Check connectivity to Telegram DC
+        echo "Checking connectivity to Telegram DC (149.154.175.50:443)..."
+        nc -zv 149.154.175.50 443 || echo "Failed to connect to Telegram DC 149.154.175.50:443"
+        
+        mkdir -p mtproxy-run
+        cp objs/bin/mtproto-proxy mtproxy-run/
+        
+        cd mtproxy-run
+        
+        # Download config/secret 
+        curl -s https://core.telegram.org/getProxySecret -o proxy-secret
+        curl -s https://core.telegram.org/getProxyConfig -o proxy-multi.conf
+        
+        # Generate a random secret for testing using xxd (from vim-common)
+        SECRET=$(head -c 16 /dev/urandom | xxd -ps)
+        echo "Using secret: $SECRET"
+        
+        # Start proxy in background (use port 8443 to avoid permission issues)
+        ./mtproto-proxy -u nobody -p 8888 -H 8443 -S $SECRET --http-stats --aes-pwd proxy-secret proxy-multi.conf -M 1 &
+        
+        # Export SECRET for the test step
+        echo "MTPROXY_SECRET=$SECRET" >> $GITHUB_ENV
+        
+        # Wait for it to start
+        sleep 5
+
+    - name: Run Python Tests
+      run: |
+        source .venv/bin/activate
+        export MTPROXY_HOST=localhost
+        export MTPROXY_PORT=8443
+        python3 tests/test_proxy.py

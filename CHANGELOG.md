@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2025-11-28
+
+- Fixed high CPU usage (Issue #100):
+  - Optimized `epoll_wait` timeout in `net/net-events.c` to be dynamic based on pending timers.
+  - Corrected `epoll_timeout` handling in `engine/engine.c` and `mtproto/mtproto-proxy.c`.
+- Fixed Docker startup issue (Issue #21):
+  - Added `vim-common` to `Dockerfile` to provide `xxd` for secret generation.
+- Added comprehensive test suite:
+  - Added `tests/` directory with Python-based tests using `telethon`.
+  - Added `make test` target for running tests in Docker.
+  - Added `TESTING.md` documentation.
+  - Added GitHub Actions workflow for automated testing.
+- Build fixes:
+  - Added missing headers (`<x86intrin.h>`) in `engine/engine-rpc.h`.
+  - Suppressed array-bounds warnings for specific files.
+
 ## 2025-09-19
 
 - Added IPv6 usage documentation to `README.md`:

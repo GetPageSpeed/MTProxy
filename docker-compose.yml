@@ -3,9 +3,14 @@ version: '3.8'
 services:
   mtproxy:
     build: .
+    platform: linux/amd64
     ports:
       - "443:443"
       - "8888:8888"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     environment:
       # Generate a random secret: head -c 16 /dev/urandom | xxd -ps
       - SECRET=${SECRET:-}
