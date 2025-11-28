@@ -29,6 +29,11 @@
 
 #include "common/tl-parse.h"
 #include "common/precise-time.h"
+#include <x86intrin.h>
+
+#ifndef rdtsc
+#define rdtsc __rdtsc
+#endif
 
 struct stats_buffer;
 struct tl_act_extra;

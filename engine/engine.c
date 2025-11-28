@@ -464,7 +464,7 @@ void default_engine_server_start (void) /* {{{ */ {
   int i;
   vkprintf (0, "main loop\n");
   for (i = 0; ; i++) {
-    epoll_work (engine_check_multithread_enabled () ? E->epoll_wait_timeout : DEFAULT_EPOLL_WAIT_TIMEOUT);
+    epoll_work (E->epoll_wait_timeout);
     if (interrupt_signal_raised ()) {
       if (F->on_waiting_exit) {
         while (1) {
@@ -592,7 +592,6 @@ void engine_startup (engine_t *E, server_functions_t *F) /* {{{ */ {
 /* }}} */ 
 
 int default_main (server_functions_t *F, int argc, char *argv[]) {
-  F->epoll_timeout = DEFAULT_EPOLL_WAIT_TIMEOUT;
   set_signals_handlers ();
 
   engine_t *E = calloc (sizeof (*E), 1);

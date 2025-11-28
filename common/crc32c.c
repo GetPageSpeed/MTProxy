@@ -27,6 +27,7 @@
 #include <math.h>
 #include <assert.h>
 #include <stdint.h>
+#include <wmmintrin.h>
 
 #include "crc32c.h"
 #include "kprintf.h"
@@ -403,7 +404,7 @@ static unsigned crc32c_partial_sse42_clmul (const void *data, long len, unsigned
     v2di D, E;
     asm volatile ("movq %1, %0\n\t" : "=x" (D)  : "g" (c));
     asm volatile ("movq %1, %0\n\t" : "=x" (E)  : "g" (c1));
-    v2di F = __builtin_ia32_pclmulqdq128 (D, K, 0x00) ^ __builtin_ia32_pclmulqdq128 (E, K, 0x10);
+    v2di F = (v2di)_mm_clmulepi64_si128 ((__m128i)D, (__m128i)K, 0x00) ^ (v2di)_mm_clmulepi64_si128 ((__m128i)E, (__m128i)K, 0x10);
     asm volatile ("movq %1, %0\n\t" : "=g" (c1) : "x"(F));
     unsigned int r;
     asm volatile ("crc32l %1, %0\n\t" : "=r" (r) : "r"((int) c1), "0"(0));
@@ -468,7 +469,7 @@ static unsigned crc32c_partial_sse42_clmul (const void *data, long len, unsigned
     v2di D, E;
     asm volatile ("movq %1, %0\n\t" : "=x" (D)  : "g" (c));
     asm volatile ("movq %1, %0\n\t" : "=x" (E)  : "g" (c1));
-    v2di F = __builtin_ia32_pclmulqdq128 (D, K, 0x00) ^ __builtin_ia32_pclmulqdq128 (E, K, 0x10);
+    v2di F = (v2di)_mm_clmulepi64_si128 ((__m128i)D, (__m128i)K, 0x00) ^ (v2di)_mm_clmulepi64_si128 ((__m128i)E, (__m128i)K, 0x10);
     asm volatile ("movq %1, %0\n\t" : "=g" (c1) : "x"(F));
     unsigned int r;
     asm volatile ("crc32l %1, %0\n\t" : "=r" (r) : "r"((int) c1), "0"(0));
