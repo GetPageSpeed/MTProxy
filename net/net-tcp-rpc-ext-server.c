@@ -1315,10 +1315,6 @@ int tcp_rpcs_compact_parse_execute (connection_job_t C) {
         unsigned tag = *(unsigned *)(random_header + 56);
 
         if (tag == 0xdddddddd || ((tag == 0xeeeeeeee || tag == 0xefefefef) && !ext_rand_pad_only)) {
-          if (tag != 0xdddddddd && allow_only_tls) {
-            vkprintf (1, "Expected random padding mode\n");
-            RETURN_TLS_ERROR(default_domain_info);
-          }
           assert (rwm_skip_data (&c->in, 64) == 64);
           rwm_union (&c->in_u, &c->in);
           rwm_init (&c->in, 0);
