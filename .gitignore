@@ -3,3 +3,4 @@ dep
 .idea
 proxy-multi.conf
 proxy-secret
+_codeql_detected_source_root
