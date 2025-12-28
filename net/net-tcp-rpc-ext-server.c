@@ -1043,6 +1043,8 @@ int tcp_rpcs_compact_parse_execute (connection_job_t C) {
 
     if (D->in_packet_num == -3) {
       vkprintf (1, "trying to determine type of connection from %s:%d\n", show_remote_ip (C), c->remote_port);
+      vkprintf (2, "packet_len=0x%08x, ext_secret_cnt=%d, allow_only_tls=%d, C_IS_TLS=%d\n", 
+                packet_len, ext_secret_cnt, allow_only_tls, !!(c->flags & C_IS_TLS));
 #if __ALLOW_UNOBFS__
       if ((packet_len & 0xff) == 0xef) {
         D->flags |= RPC_F_COMPACT;
@@ -1110,7 +1112,9 @@ int tcp_rpcs_compact_parse_execute (connection_job_t C) {
         assert (rwm_fetch_lookup (&c->in, &packet_len, 4) == 4);
 
         c->left_tls_packet_length -= 64; // skip header length
-      } else if ((packet_len & 0xFFFFFF) == 0x010316 && (packet_len >> 24) >= 2 && ext_secret_cnt > 0 && allow_only_tls) {
+      } else if ((packet_len & 0xFF) == 0x16 && ((packet_len >> 8) & 0xFF) == 0x03 && (packet_len >> 24) >= 2 && ext_secret_cnt > 0 && allow_only_tls) {
+        // TLS ClientHello detection: 0x16 (handshake), 0x03 (SSL/TLS version major), any minor version (0x01=TLS1.0, 0x03=TLS1.2/1.3)
+        vkprintf (2, "Detected TLS ClientHello: packet_len=0x%08x, version=0x03%02x\n", packet_len, (packet_len >> 16) & 0xFF);
         unsigned char header[5];
         assert (rwm_fetch_lookup (&c->in, header, 5) == 5);
         min_len = 5 + 256 * header[3] + header[4];
