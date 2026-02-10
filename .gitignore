@@ -1,3 +1,5 @@
 objs
 dep
-.idea/
+.idea
+proxy-multi.conf
+proxy-secret

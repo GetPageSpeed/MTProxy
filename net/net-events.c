@@ -409,6 +409,10 @@ int epoll_work (int timeout) {
     return 0;
   }
 
+  if (timeout2 < timeout) {
+    timeout = timeout2;
+  }
+
   double epoll_wait_start = get_utime_monotonic ();
 
   epoll_fetch_events (timeout);

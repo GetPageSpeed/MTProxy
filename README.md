@@ -57,6 +57,18 @@ make && cd objs/bin
 
 If the build has failed, you should run `make clean` before building it again.
 
+## Testing
+
+This repository includes a comprehensive test suite. For detailed instructions, see [TESTING.md](TESTING.md).
+
+To run the tests using Docker:
+
+```bash
+# Export environment variables (see TESTING.md)
+export MTPROXY_SECRET=...
+make test
+```
+
 ## Running
 1. Obtain a secret, used to connect to telegram servers.
 ```bash
@@ -246,9 +258,37 @@ systemctl enable MTProxy.service
 
 ## Docker
 
-### Using Pre-built Docker Image
+### Quick Start
 
-The easiest way to run MTProxy is using our pre-built Docker image from GitHub Container Registry:
+The simplest way to run MTProxy - no configuration needed:
+
+```bash
+docker run -d \
+  --name mtproxy \
+  -p 443:443 \
+  -p 8888:8888 \
+  --restart unless-stopped \
+  --platform linux/amd64 \
+  ghcr.io/getpagespeed/mtproxy:latest
+```
+
+The container automatically:
+- Downloads the latest proxy configuration from Telegram
+- Generates a random secret if none is provided
+- Starts the proxy on port 443
+
+**Finding Your Auto-Generated Secret:**
+
+```bash
+docker logs mtproxy 2>&1 | grep "Generated secret"
+# Output: Generated secret: abc123def456...
+```
+
+Use this secret to configure your Telegram client.
+
+### Using Pre-built Docker Image (Advanced)
+
+For more control, specify environment variables:
 
 ```bash
 docker run -d \
@@ -272,8 +312,9 @@ docker run -d \
 - `PORT`: Port for client connections (default: 443)
 - `STATS_PORT`: Port for statistics endpoint (default: 8888)
 - `WORKERS`: Number of worker processes (default: 1)
-- `PROXY_TAG`: Proxy tag from [@MTProxybot](https://t.me/MTProxybot)
+- `PROXY_TAG`: Proxy tag from [@MTProxybot](https://t.me/MTProxybot) (optional, for channel promotion)
 - `RANDOM_PADDING`: Enable random padding only mode (true/false, default: false)
+- `EXTERNAL_IP`: Your public IP address for NAT environments (optional)
 - `EE_DOMAIN`: Domain for EE Mode (Fake-TLS + Padding), e.g. `www.google.com`
 
 #### Getting Statistics
@@ -284,16 +325,46 @@ curl http://localhost:8888/stats
 
 ### Using Docker Compose
 
-Create a `.env` file:
+The simplest Docker Compose setup (create `docker-compose.yml`):
+
+```yaml
+services:
+  mtproxy:
+    image: ghcr.io/getpagespeed/mtproxy:latest
+    platform: linux/amd64
+    ports:
+      - "443:443"
+      - "8888:8888"
+    restart: unless-stopped
+```
+
+Then run:
+```bash
+docker-compose up -d
+docker-compose logs mtproxy | grep "Generated secret"
+```
+
+For custom configuration, create a `.env` file:
 ```bash
 SECRET=your_secret_here
 PROXY_TAG=your_proxy_tag_here
 RANDOM_PADDING=false
 ```
 
-Then run:
-```bash
-docker-compose up -d
+And reference it in your `docker-compose.yml`:
+```yaml
+services:
+  mtproxy:
+    image: ghcr.io/getpagespeed/mtproxy:latest
+    platform: linux/amd64
+    ports:
+      - "443:443"
+      - "8888:8888"
+    environment:
+      - SECRET=${SECRET}
+      - PROXY_TAG=${PROXY_TAG}
+      - RANDOM_PADDING=${RANDOM_PADDING}
+    restart: unless-stopped
 ```
 
 ### Building Your Own Image
@@ -306,8 +377,13 @@ docker run -d \
   --name mtproxy \
   -p 443:443 \
   -p 8888:8888 \
-  -e SECRET=your_secret_here \
+  --platform linux/amd64 \
   mtproxy
+```
+
+Check the logs to find your auto-generated secret:
+```bash
+docker logs mtproxy 2>&1 | grep "Generated secret"
 ```
 
 ### Health Check

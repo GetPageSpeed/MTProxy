@@ -2,6 +2,44 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.8] - 2025-12-07
+
+### Fixed
+- Docker startup failure when `SECRET` not provided ([#21](https://github.com/GetPageSpeed/MTProxy/issues/21)):
+  - Added `vim-common` package to provide `xxd` for automatic secret generation
+  - Secret is now auto-generated if not provided via environment variable
+- Container "cannot raise open file limit" error:
+  - Added `-c` flag with `MAX_CONNECTIONS` env var (default: 60000)
+  - Added `ulimits` configuration to docker-compose files
+
+### Added
+- CI testing workflow with GitHub Actions
+- Simplified test suite (HTTP stats + MTProto port connectivity)
+- `TESTING.md` documentation
+- Docker Quick Start section in README - run with zero configuration
+- `EXTERNAL_IP` environment variable for NAT support in Docker
+- Explicit `--platform linux/amd64` in Dockerfile for Apple Silicon compatibility
+
+### Changed
+- Simplified test suite - removed Telethon dependency for faster, more reliable CI
+- Updated Docker documentation with clearer examples
+
+## 2025-11-28
+
+- Fixed high CPU usage (Issue #100):
+  - Optimized `epoll_wait` timeout in `net/net-events.c` to be dynamic based on pending timers.
+  - Corrected `epoll_timeout` handling in `engine/engine.c` and `mtproto/mtproto-proxy.c`.
+- Fixed Docker startup issue (Issue #21):
+  - Added `vim-common` to `Dockerfile` to provide `xxd` for secret generation.
+- Added comprehensive test suite:
+  - Added `tests/` directory with Python-based tests using `telethon`.
+  - Added `make test` target for running tests in Docker.
+  - Added `TESTING.md` documentation.
+  - Added GitHub Actions workflow for automated testing.
+- Build fixes:
+  - Added missing headers (`<x86intrin.h>`) in `engine/engine-rpc.h`.
+  - Suppressed array-bounds warnings for specific files.
+
 ## 2025-09-19
 
 - Added IPv6 usage documentation to `README.md`:
