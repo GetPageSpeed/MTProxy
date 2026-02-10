@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.9] - 2026-02-10
+
+### Added
+- `EE_DOMAIN` environment variable for Docker to enable EE mode (Fake-TLS) ([#30](https://github.com/GetPageSpeed/MTProxy/pull/30))
+
 ## [3.0.8] - 2025-12-07
 
 ### Fixed
