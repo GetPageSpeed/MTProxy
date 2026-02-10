@@ -315,6 +315,7 @@ docker run -d \
 - `PROXY_TAG`: Proxy tag from [@MTProxybot](https://t.me/MTProxybot) (optional, for channel promotion)
 - `RANDOM_PADDING`: Enable random padding only mode (true/false, default: false)
 - `EXTERNAL_IP`: Your public IP address for NAT environments (optional)
+- `EE_DOMAIN`: Domain for EE Mode (Fake-TLS + Padding), e.g. `www.google.com`
 
 #### Getting Statistics
 

@@ -75,6 +75,7 @@ STATS_PORT=\${STATS_PORT:-8888}
 WORKERS=\${WORKERS:-1}
 PROXY_TAG=\${PROXY_TAG:-}
 RANDOM_PADDING=\${RANDOM_PADDING:-}
+EE_DOMAIN=\${EE_DOMAIN:-}
 # Max connections - lower value avoids rlimit issues in containers
 MAX_CONNECTIONS=\${MAX_CONNECTIONS:-60000}
 
@@ -98,6 +99,10 @@ fi
 
 if [ "\$RANDOM_PADDING" = "true" ]; then
     CMD="\$CMD -R"
+fi
+
+if [ -n "\$EE_DOMAIN" ]; then
+    CMD="\$CMD -D \$EE_DOMAIN"
 fi
 
 CMD="\$CMD --aes-pwd proxy-secret proxy-multi.conf -M \$WORKERS -u mtproxy \$@"
