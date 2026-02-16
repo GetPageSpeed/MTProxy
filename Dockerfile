@@ -80,7 +80,7 @@ EE_DOMAIN=\${EE_DOMAIN:-}
 MAX_CONNECTIONS=\${MAX_CONNECTIONS:-60000}
 
 # Detect container-local IPv4 for NAT (used when EXTERNAL_IP is provided).
-LOCAL_IP=\$(grep -vE '(local|ip6|^fd)' /etc/hosts | awk 'NR==1 {print \$1}')
+LOCAL_IP=\$(grep -vE '(local|ip6|^fd|^\$)' /etc/hosts | awk 'NR==1 {print \$1}')
 
 # Optional public IPv4 address to advertise to Telegram DCs; pass via -e EXTERNAL_IP=1.2.3.4
 EXTERNAL_IP=\${EXTERNAL_IP:-}
