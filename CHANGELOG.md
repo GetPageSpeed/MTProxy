@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.10] - 2026-02-16
+
+### Fixed
+- LOCAL_IP detection in Docker for RouterOS containers where `/etc/hosts` contains empty lines ([#31](https://github.com/GetPageSpeed/MTProxy/pull/31))
+
 ## [3.0.9] - 2026-02-10
 
 ### Added
