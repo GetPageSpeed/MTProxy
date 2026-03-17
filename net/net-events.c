@@ -668,7 +668,7 @@ int client_socket (in_addr_t in_addr, int port, int mode) {
   
   if (!(mode & SM_IPV6)) {
     engine_t *E = engine_state;
-    if (E && E->settings_addr.s_addr) {
+    if (E && E->settings_addr.s_addr && (ntohl(E->settings_addr.s_addr) >> 24) != 127) {
       struct sockaddr_in localaddr;
       memset (&localaddr, 0, sizeof (localaddr));
   

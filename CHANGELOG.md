@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.11] - 2026-03-17
+
+### Fixed
+- Stats endpoint (`--http-stats`) now accessible from all RFC 1918 private networks, not just loopback ([#35](https://github.com/GetPageSpeed/MTProxy/issues/35)). Fixes stats being unreachable from Docker host via bridge network.
+
 ## [3.0.10] - 2026-02-16
 
 ### Fixed

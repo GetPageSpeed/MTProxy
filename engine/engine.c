@@ -234,7 +234,7 @@ void engine_init (const char *const pwd_filename, int do_not_open_port) {
 
   if (E->settings_addr.s_addr) {
     ipv4 = ntohl (E->settings_addr.s_addr);
-    if ((ipv4 >> 24) != 10) {
+    if ((ipv4 >> 24) != 10 && (ipv4 >> 24) != 127 && (ipv4 >> 20) != (172 << 4 | 1) && (ipv4 >> 16) != (192 << 8 | 168)) {
       kprintf ("Bad binded IP address " IP_PRINT_STR ", search in ifconfig\n", IP_TO_PRINT (ipv4));
       ipv4 = 0;
     }
