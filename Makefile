@@ -3,6 +3,10 @@ DEP	=	dep
 EXE = ${OBJ}/bin
 
 COMMIT := $(shell git log -1 --pretty=format:"%H")
+VERSION := $(shell git describe --tags --match 'v*' --abbrev=0 2>/dev/null | sed 's/^v//' || echo "unknown")
+ifneq ($(EXTRA_VERSION),)
+VERSION := $(EXTRA_VERSION)
+endif
 
 BITNESS_FLAGS =
 ifeq ($(m), 32)
@@ -16,7 +20,7 @@ endif
 HOST_ARCH := $(shell arch)
 
 # Default CFLAGS and LDFLAGS
-COMMON_CFLAGS := -O3 -std=gnu11 -Wall -fno-strict-aliasing -fno-strict-overflow -fwrapv -DAES=1 -DCOMMIT=\"${COMMIT}\" -D_GNU_SOURCE=1 -D_FILE_OFFSET_BITS=64 -Wno-array-bounds -Wno-implicit-function-declaration
+COMMON_CFLAGS := -O3 -std=gnu11 -Wall -fno-strict-aliasing -fno-strict-overflow -fwrapv -DAES=1 -DCOMMIT=\"${COMMIT}\" -DVERSION=\"${VERSION}\" -D_GNU_SOURCE=1 -D_FILE_OFFSET_BITS=64 -Wno-array-bounds -Wno-implicit-function-declaration
 COMMON_LDFLAGS := -ggdb -rdynamic -lm -lrt -lcrypto -lz -lpthread
 
 # Architecture-specific CFLAGS

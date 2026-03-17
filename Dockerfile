@@ -16,7 +16,8 @@ WORKDIR /src
 COPY . .
 
 # Build the application
-RUN make clean && make -j$(nproc)
+ARG VERSION=unknown
+RUN make clean && make -j$(nproc) EXTRA_VERSION="${VERSION}"
 
 # Runtime image (must match builder architecture)
 FROM --platform=linux/amd64 ubuntu:22.04

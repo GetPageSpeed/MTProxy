@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
 
     - name: Build and Run Tests
       env:
@@ -27,6 +29,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
 
     - name: Install Dependencies
       run: |
@@ -39,6 +43,17 @@ jobs:
     - name: Build MTProxy
       run: |
         make clean && make -j$(nproc)
+
+    - name: Verify version string
+      run: |
+        EXPECTED_VERSION=$(git describe --tags --match 'v*' --abbrev=0 | sed 's/^v//')
+        echo "Expected version: $EXPECTED_VERSION"
+        ACTUAL_OUTPUT=$(objs/bin/mtproto-proxy 2>&1 || true)
+        echo "$ACTUAL_OUTPUT" | grep -q "mtproxy-${EXPECTED_VERSION}" || {
+          echo "ERROR: version mismatch — expected mtproxy-${EXPECTED_VERSION}"
+          exit 1
+        }
+        echo "Version check passed"
 
     - name: Setup and Run Proxy
       run: |
