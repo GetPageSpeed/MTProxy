@@ -91,6 +91,7 @@ head -c 16 /dev/urandom | xxd -ps
 - `443` is the port, used by clients to connect to the proxy.
 - `8888` is the local port for statistics (requires `--http-stats`). Like `curl http://localhost:8888/stats`. Stats are accessible from private networks (loopback, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) but not from public IPs.
 - `<secret>` is the secret generated at step 3. Also you can set multiple secrets: `-S <secret1> -S <secret2>`.
+- `--aes-pwd proxy-secret` points to the `proxy-secret` file downloaded at step 1, which contains the encryption key used for MTProto key exchange with Telegram DCs.
 - `proxy-secret` and `proxy-multi.conf` are obtained at steps 1 and 2.
 - `1` is the number of workers. You can increase the number of workers, if you have a powerful server.
 
