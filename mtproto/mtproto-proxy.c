@@ -1380,6 +1380,13 @@ int http_query_job_run (job_t job, int op, struct job_thread *JT) {
   }
 }
 
+static inline int is_private_ip (unsigned ip) {
+  return (ip >> 24) == 127       // 127.0.0.0/8
+      || (ip >> 24) == 10        // 10.0.0.0/8
+      || (ip >> 20) == 0xAC1     // 172.16.0.0/12
+      || (ip >> 16) == 0xC0A8;   // 192.168.0.0/16
+}
+
 int hts_stats_execute (connection_job_t c, struct raw_message *msg, int op) {
   struct hts_data *D = HTS_DATA(c);
 
@@ -1392,7 +1399,7 @@ int hts_stats_execute (connection_job_t c, struct raw_message *msg, int op) {
     D->query_flags &= ~QF_KEEPALIVE;
     return -501;
   }
-  if (CONN_INFO(c)->remote_ip != 0x7f000001) {
+  if (!is_private_ip(CONN_INFO(c)->remote_ip)) {
     return -404;
   }
 
