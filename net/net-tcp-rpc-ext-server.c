@@ -164,6 +164,7 @@ static int allow_only_tls;
 
 struct domain_info {
   const char *domain;
+  int port;
   struct in_addr target;
   unsigned char target_ipv6[16];
   short server_hello_encrypted_size;
@@ -492,12 +493,31 @@ static int check_response (const unsigned char *response, int len, const unsigne
 
 static int update_domain_info (struct domain_info *info) {
   const char *domain = info->domain;
-  struct hostent *host = kdb_gethostbyname (domain);
-  if (host == NULL || host->h_addr == NULL) {
-    kprintf ("Failed to resolve host %s\n", domain);
-    return 0;
+
+  // Try parsing as a literal IP address first
+  struct in_addr addr4;
+  struct in6_addr addr6;
+  int af = 0;
+  if (inet_pton (AF_INET, domain, &addr4) == 1) {
+    af = AF_INET;
+    info->target = addr4;
+    memset (info->target_ipv6, 0, sizeof (info->target_ipv6));
+  } else if (inet_pton (AF_INET6, domain, &addr6) == 1) {
+    af = AF_INET6;
+    info->target.s_addr = 0;
+    memcpy (info->target_ipv6, &addr6, sizeof (info->target_ipv6));
   }
-  assert (host->h_addrtype == AF_INET || host->h_addrtype == AF_INET6);
+
+  struct hostent *host = NULL;
+  if (!af) {
+    host = kdb_gethostbyname (domain);
+    if (host == NULL || host->h_addr == NULL) {
+      kprintf ("Failed to resolve host %s\n", domain);
+      return 0;
+    }
+    assert (host->h_addrtype == AF_INET || host->h_addrtype == AF_INET6);
+    af = host->h_addrtype;
+  }
 
   fd_set read_fd;
   fd_set write_fd;
@@ -510,7 +530,7 @@ static int update_domain_info (struct domain_info *info) {
   int sockets[TRIES];
   int i;
   for (i = 0; i < TRIES; i++) {
-    sockets[i] = socket (host->h_addrtype, SOCK_STREAM, IPPROTO_TCP);
+    sockets[i] = socket (af, SOCK_STREAM, IPPROTO_TCP);
     if (sockets[i] < 0) {
       kprintf ("Failed to open socket for %s: %s\n", domain, strerror (errno));
       return 0;
@@ -521,29 +541,33 @@ static int update_domain_info (struct domain_info *info) {
     }
 
     int e_connect;
-    if (host->h_addrtype == AF_INET) {
-      info->target = *((struct in_addr *) host->h_addr);
-      memset (info->target_ipv6, 0, sizeof (info->target_ipv6));
+    if (af == AF_INET) {
+      if (host) {
+        info->target = *((struct in_addr *) host->h_addr);
+        memset (info->target_ipv6, 0, sizeof (info->target_ipv6));
+      }
 
       struct sockaddr_in addr;
       memset (&addr, 0, sizeof (addr));
       addr.sin_family = AF_INET;
-      addr.sin_port = htons (443);
-      memcpy (&addr.sin_addr, host->h_addr, sizeof (struct in_addr));
+      addr.sin_port = htons (info->port);
+      memcpy (&addr.sin_addr, &info->target, sizeof (struct in_addr));
 
-      e_connect = connect (sockets[i], &addr, sizeof (addr));
+      e_connect = connect (sockets[i], (struct sockaddr *)&addr, sizeof (addr));
     } else {
-      assert (sizeof (struct in6_addr) == sizeof (info->target_ipv6));
-      info->target.s_addr = 0;
-      memcpy (info->target_ipv6, host->h_addr, sizeof (struct in6_addr));
+      if (host) {
+        assert (sizeof (struct in6_addr) == sizeof (info->target_ipv6));
+        info->target.s_addr = 0;
+        memcpy (info->target_ipv6, host->h_addr, sizeof (struct in6_addr));
+      }
 
       struct sockaddr_in6 addr;
       memset (&addr, 0, sizeof (addr));
       addr.sin6_family = AF_INET6;
-      addr.sin6_port = htons (443);
-      memcpy (&addr.sin6_addr, host->h_addr, sizeof (struct in6_addr));
+      addr.sin6_port = htons (info->port);
+      memcpy (&addr.sin6_addr, info->target_ipv6, sizeof (struct in6_addr));
 
-      e_connect = connect (sockets[i], &addr, sizeof (addr));
+      e_connect = connect (sockets[i], (struct sockaddr *)&addr, sizeof (addr));
     }
 
     if (e_connect == -1 && errno != EINPROGRESS) {
@@ -800,9 +824,48 @@ void tcp_rpc_add_proxy_domain (const char *domain) {
 
   struct domain_info *info = calloc (1, sizeof (struct domain_info));
   assert (info != NULL);
-  info->domain = strdup (domain);
+  info->port = 443;
 
-  struct domain_info **bucket = get_domain_info_bucket (domain, strlen (domain));
+  const char *host_start = domain;
+  const char *host_end = NULL;
+
+  if (domain[0] == '[') {
+    // [IPv6]:port format
+    host_end = strchr (domain, ']');
+    if (host_end == NULL) {
+      kprintf ("Invalid IPv6 address: %s\n", domain);
+      free (info);
+      return;
+    }
+    host_start = domain + 1;
+    const char *after_bracket = host_end + 1;
+    if (*after_bracket == ':') {
+      info->port = atoi (after_bracket + 1);
+    }
+    info->domain = strndup (host_start, host_end - host_start);
+  } else {
+    // Check for host:port — but only if the last colon has digits after it
+    // and there is at most one colon (to avoid matching bare IPv6 like ::1)
+    const char *colon = strrchr (domain, ':');
+    if (colon != NULL && strchr (domain, ':') == colon) {
+      // Exactly one colon — treat as host:port
+      info->port = atoi (colon + 1);
+      info->domain = strndup (domain, colon - domain);
+    } else {
+      info->domain = strdup (domain);
+    }
+  }
+
+  if (info->port <= 0 || info->port > 65535) {
+    kprintf ("Invalid port in domain spec: %s\n", domain);
+    free ((void *)info->domain);
+    free (info);
+    return;
+  }
+
+  kprintf ("Proxy domain: %s:%d\n", info->domain, info->port);
+
+  struct domain_info **bucket = get_domain_info_bucket (info->domain, strlen (info->domain));
   info->next = *bucket;
   *bucket = info;
 
@@ -952,7 +1015,7 @@ static int proxy_connection (connection_job_t C, const struct domain_info *info)
     return 0;
   }
 
-  int port = c->our_port == 80 ? 80 : 443;
+  int port = c->our_port == 80 ? 80 : info->port;
 
   int cfd = -1;
   if (info->target.s_addr) {

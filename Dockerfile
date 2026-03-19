@@ -76,6 +76,7 @@ STATS_PORT=\${STATS_PORT:-8888}
 WORKERS=\${WORKERS:-1}
 PROXY_TAG=\${PROXY_TAG:-}
 RANDOM_PADDING=\${RANDOM_PADDING:-}
+# Domain or host:port for TLS-transport mode (e.g. google.com or 127.0.0.1:8443)
 EE_DOMAIN=\${EE_DOMAIN:-}
 # Max connections - lower value avoids rlimit issues in containers
 MAX_CONNECTIONS=\${MAX_CONNECTIONS:-60000}
