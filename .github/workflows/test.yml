@@ -67,8 +67,8 @@ jobs:
         cd mtproxy-run
         
         # Download config/secret 
-        curl -s https://core.telegram.org/getProxySecret -o proxy-secret
-        curl -s https://core.telegram.org/getProxyConfig -o proxy-multi.conf
+        curl --connect-timeout 10 --max-time 30 --retry 3 -fsSL https://core.telegram.org/getProxySecret -o proxy-secret
+        curl --connect-timeout 10 --max-time 30 --retry 3 -fsSL https://core.telegram.org/getProxyConfig -o proxy-multi.conf
         
         # Generate a random secret for testing using xxd (from vim-common)
         SECRET=$(head -c 16 /dev/urandom | xxd -ps)
