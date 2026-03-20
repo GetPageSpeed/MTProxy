@@ -43,6 +43,14 @@ COPY --from=builder /src/objs/bin/mtproto-proxy /opt/mtproxy/
 # Make binary executable
 RUN chmod +x /opt/mtproxy/mtproto-proxy
 
+# proxy-secret is a static public 128-byte blob used for MTProto key exchange.
+# Baking it at build time eliminates the most critical runtime network dependency.
+RUN curl --connect-timeout 10 --max-time 30 --retry 3 --retry-delay 2 \
+    -fsSL https://core.telegram.org/getProxySecret -o /opt/mtproxy/proxy-secret
+
+# Create data directory for persistent config (proxy-multi.conf)
+RUN mkdir -p /opt/mtproxy/data
+
 # Expose ports
 EXPOSE 443 8888
 
@@ -51,16 +59,37 @@ COPY <<EOF /opt/mtproxy/start.sh
 #!/bin/bash
 set -e
 
-# Download proxy secret if not exists
+# proxy-secret is baked into the image at build time
 if [ ! -f proxy-secret ]; then
-    echo "Downloading proxy secret..."
-    curl -s https://core.telegram.org/getProxySecret -o proxy-secret
+    echo "ERROR: proxy-secret not found. The Docker image may be corrupted." >&2
+    exit 1
 fi
 
-# Download proxy config if not exists or older than 1 day
-if [ ! -f proxy-multi.conf ] || [ \$(find proxy-multi.conf -mtime +1 | wc -l) -gt 0 ]; then
+# Download/refresh proxy config to data/ (persisted via volume mount)
+CONFIG_PATH="data/proxy-multi.conf"
+NEEDS_DOWNLOAD=0
+
+if [ ! -f "\$CONFIG_PATH" ]; then
+    NEEDS_DOWNLOAD=1
+elif [ \$(find "\$CONFIG_PATH" -mtime +1 2>/dev/null | wc -l) -gt 0 ]; then
+    NEEDS_DOWNLOAD=1
+fi
+
+if [ "\$NEEDS_DOWNLOAD" -eq 1 ]; then
     echo "Downloading proxy config..."
-    curl -s https://core.telegram.org/getProxyConfig -o proxy-multi.conf
+    if curl --connect-timeout 10 --max-time 30 --retry 3 --retry-delay 2 -fsSL https://core.telegram.org/getProxyConfig -o "\$CONFIG_PATH.tmp"; then
+        mv "\$CONFIG_PATH.tmp" "\$CONFIG_PATH"
+        echo "Proxy config downloaded successfully."
+    else
+        rm -f "\$CONFIG_PATH.tmp"
+        if [ -f "\$CONFIG_PATH" ]; then
+            echo "WARNING: Failed to refresh proxy config, using cached copy." >&2
+        else
+            echo "ERROR: Failed to download proxy config and no cached copy exists." >&2
+            echo "Ensure core.telegram.org is reachable, or provide proxy-multi.conf in the data/ volume." >&2
+            exit 1
+        fi
+    fi
 fi
 
 # Generate secret if not provided
@@ -107,7 +136,7 @@ if [ -n "\$EE_DOMAIN" ]; then
     CMD="\$CMD -D \$EE_DOMAIN"
 fi
 
-CMD="\$CMD --aes-pwd proxy-secret proxy-multi.conf -M \$WORKERS -u mtproxy \$@"
+CMD="\$CMD --aes-pwd proxy-secret data/proxy-multi.conf -M \$WORKERS -u mtproxy \$@"
 
 echo "Starting MTProxy with command: \$CMD"
 exec \$CMD

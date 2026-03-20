@@ -72,11 +72,11 @@ make test
 ## Running
 1. Obtain a secret, used to connect to telegram servers.
 ```bash
-curl -s https://core.telegram.org/getProxySecret -o proxy-secret
+curl --connect-timeout 10 --max-time 30 --retry 3 -fsSL https://core.telegram.org/getProxySecret -o proxy-secret
 ```
 2. Obtain current telegram configuration. It can change (occasionally), so we encourage you to update it once per day.
 ```bash
-curl -s https://core.telegram.org/getProxyConfig -o proxy-multi.conf
+curl --connect-timeout 10 --max-time 30 --retry 3 -fsSL https://core.telegram.org/getProxyConfig -o proxy-multi.conf
 ```
 3. Generate a secret to be used by users to connect to your proxy.
 ```bash
@@ -221,6 +221,53 @@ echo -n "ee${SECRET}" && echo -n $DOMAIN | xxd -plain
 
 > 📖 **Complete Fake TLS setup guide**: [GetPageSpeed MTProxy - Fake TLS section](https://www.getpagespeed.com/server-setup/mtproxy#fake-tls)
 
+### EE Mode with Custom TLS Backend (TCP Splitting)
+
+Instead of mimicking a public website, you can run your own web server (e.g., nginx) behind MTProxy with a real TLS certificate for your domain. Non-MTProxy visitors see a fully functioning HTTPS website, making the server indistinguishable from a normal web server.
+
+**How it works:**
+- MTProxy listens on port 443
+- nginx runs on a non-standard port (e.g., 8443) with a valid certificate for your domain
+- The domain's DNS A record points to the MTProxy server
+- Valid MTProxy clients connect normally; all other traffic is forwarded to nginx
+
+**Requirements:**
+- The backend must support **TLS 1.3** (MTProxy verifies this at startup)
+- The `-D` value **must be a hostname**, not a raw IP address. Using an IP address (e.g., `-D 127.0.0.1:8443`) breaks `ee` secrets because TLS SNI does not support IP addresses (RFC 6066)
+
+**Setup:**
+
+1. Configure nginx to listen on a local port with TLS 1.3:
+   ```nginx
+   server {
+       listen 127.0.0.1:8443 ssl;
+       server_name mywebsite.com;
+
+       ssl_certificate /path/to/fullchain.pem;
+       ssl_certificate_key /path/to/privkey.pem;
+       ssl_protocols TLSv1.3;
+
+       # ... your website configuration
+   }
+   ```
+
+2. Add an `/etc/hosts` entry so MTProxy resolves the domain to loopback (needed when nginx only listens on `127.0.0.1`):
+   ```
+   127.0.0.1 mywebsite.com
+   ```
+   > **Note**: If nginx listens on all interfaces (`0.0.0.0:8443`) and the domain's DNS already points to this server, you can skip the `/etc/hosts` entry.
+
+3. Run MTProxy with the domain and port:
+   ```bash
+   ./mtproto-proxy -u nobody -p 8888 -H 443 -S <secret> -D mywebsite.com:8443 --http-stats --aes-pwd proxy-secret proxy-multi.conf -M 1
+   ```
+
+4. Generate the client `ee` secret as usual (using `mywebsite.com` as the domain):
+   ```bash
+   SECRET="<your_32_hex_secret>"
+   echo -n "ee${SECRET}" && echo -n mywebsite.com | xxd -plain
+   ```
+
 ## Systemd example configuration
 1. Create systemd service file (it's standard path for the most Linux distros, but you should check it before):
 ```bash
@@ -316,7 +363,7 @@ docker run -d \
 - `PROXY_TAG`: Proxy tag from [@MTProxybot](https://t.me/MTProxybot) (optional, for channel promotion)
 - `RANDOM_PADDING`: Enable random padding only mode (true/false, default: false)
 - `EXTERNAL_IP`: Your public IP address for NAT environments (optional)
-- `EE_DOMAIN`: Domain for EE Mode (Fake-TLS + Padding), e.g. `www.google.com`
+- `EE_DOMAIN`: Domain for EE Mode (Fake-TLS + Padding), e.g. `www.google.com`. Accepts `host:port` for custom TLS backends (e.g., `mywebsite.com:8443`). See [Custom TLS Backend](#ee-mode-with-custom-tls-backend-tcp-splitting)
 
 #### Getting Statistics
 
@@ -398,7 +445,11 @@ docker ps
 
 ### Volume Mounting
 
-The container persists configuration files in `/opt/mtproxy/data`. Mount a volume to persist data across container restarts:
+The container stores `proxy-multi.conf` (Telegram DC addresses) in `/opt/mtproxy/data/`. Mount a volume to persist this configuration across container restarts. The `proxy-secret` file is baked into the image at build time and does not require persistence.
+
+If `core.telegram.org` is unreachable (e.g., due to network restrictions), the container will use a cached `proxy-multi.conf` from the data volume when available. On first run without network access, you must manually place `proxy-multi.conf` in the data volume.
+
+Mount a volume:
 
 ```bash
 -v /path/to/host/data:/opt/mtproxy/data
