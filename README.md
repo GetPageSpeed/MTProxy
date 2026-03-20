@@ -240,16 +240,22 @@ Instead of mimicking a public website, you can run your own web server (e.g., ng
 1. Configure nginx to listen on a local port with TLS 1.3:
    ```nginx
    server {
-       listen 127.0.0.1:8443 ssl;
+       listen 127.0.0.1:8443 ssl default_server;
        server_name mywebsite.com;
 
-       ssl_certificate /path/to/fullchain.pem;
-       ssl_certificate_key /path/to/privkey.pem;
+       ssl_certificate /etc/letsencrypt/live/mywebsite.com/fullchain.pem;
+       ssl_certificate_key /etc/letsencrypt/live/mywebsite.com/privkey.pem;
        ssl_protocols TLSv1.3;
+       ssl_prefer_server_ciphers off;
 
-       # ... your website configuration
+       root /var/www/html;
+
+       location / {
+           try_files $uri $uri/ =404;
+       }
    }
    ```
+   > **Certificate renewal**: Use certbot with DNS-01 challenge (`--preferred-challenges dns`). HTTP-01 challenge will not work because MTProxy occupies port 443.
 
 2. Add an `/etc/hosts` entry so MTProxy resolves the domain to loopback (needed when nginx only listens on `127.0.0.1`):
    ```
