@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.13] - 2026-03-21
+
+### Added
+- `-D host:port` support for custom TLS backend — proxy MTProto traffic to your own web server instead of a remote domain
+- Custom TLS backend setup guide in README
+- `--aes-pwd` flag documentation in README ([#38](https://github.com/GetPageSpeed/MTProxy/pull/38), fixes [#36](https://github.com/GetPageSpeed/MTProxy/issues/36))
+
+### Fixed
+- `proxy-secret` baked into Docker image at build time — eliminates runtime download failures and speeds up container startup
+- Download resilience for `proxy-multi.conf` with better retry logic and cached fallback
+
+## [3.0.12] - 2026-03-17
+
+### Fixed
+- `VERSION_STR` was hardcoded as `mtproxy-3.0.5` regardless of actual release — now injected from git tags at build time ([#37](https://github.com/GetPageSpeed/MTProxy/issues/37))
+
 ## [3.0.11] - 2026-03-17
 
 ### Fixed
