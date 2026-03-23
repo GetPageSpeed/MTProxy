@@ -3,6 +3,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 ENV PYTHONUNBUFFERED=1
-COPY test_proxy.py .
+COPY test_proxy.py test_tls_e2e.py ./
 CMD ["python", "test_proxy.py"]
 
