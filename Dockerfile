@@ -29,6 +29,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     ca-certificates \
     vim-common \
+    cron \
     && rm -rf /var/lib/apt/lists/*
 
 # Create user for running the proxy
@@ -50,6 +51,14 @@ RUN curl --connect-timeout 10 --max-time 30 --retry 3 --retry-delay 2 \
 
 # Create data directory for persistent config (proxy-multi.conf)
 RUN mkdir -p /opt/mtproxy/data
+
+# Install cron job to refresh proxy-multi.conf from Telegram servers every 6 hours.
+# Prevents proxy from becoming unavailable due to stale DC configuration.
+# Output is redirected to PID 1's stdout so it appears in `docker logs`.
+COPY mtproxy-config-refresh.sh /opt/mtproxy/config-refresh.sh
+RUN chmod +x /opt/mtproxy/config-refresh.sh \
+    && echo '0 */6 * * * root /opt/mtproxy/config-refresh.sh >> /proc/1/fd/1 2>> /proc/1/fd/2' > /etc/cron.d/mtproxy-config-refresh \
+    && chmod 0644 /etc/cron.d/mtproxy-config-refresh
 
 # Expose ports
 EXPOSE 443 8888
@@ -139,10 +148,17 @@ fi
 CMD="\$CMD --aes-pwd proxy-secret data/proxy-multi.conf -M \$WORKERS -u mtproxy \$@"
 
 echo "Starting MTProxy with command: \$CMD"
+
+# Start cron daemon for daily config refresh
+cron
+
 exec \$CMD
 EOF
 
 RUN chmod +x /opt/mtproxy/start.sh
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=60s \
+    CMD curl -f http://localhost:8888/stats || exit 1
 
 # Set entrypoint
 ENTRYPOINT ["/opt/mtproxy/start.sh"] 

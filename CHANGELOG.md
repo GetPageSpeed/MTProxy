@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.14] - 2026-03-23
+
+### Added
+- Automatic daily refresh of `proxy-multi.conf` via cron — prevents proxy from becoming unavailable when Telegram rotates DC server addresses ([#41](https://github.com/GetPageSpeed/MTProxy/issues/41))
+- `HEALTHCHECK` instruction in Dockerfile — health monitoring now works with plain `docker run`, not just Docker Compose
+
 ## [3.0.13] - 2026-03-21
 
 ### Added
