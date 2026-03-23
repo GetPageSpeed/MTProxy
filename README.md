@@ -449,6 +449,18 @@ docker ps
 # Look for the health status in the STATUS column
 ```
 
+### Automatic Config Refresh
+
+The container includes a daily cron job that automatically refreshes the Telegram DC configuration (`proxy-multi.conf`). This prevents the proxy from becoming unavailable due to stale server addresses — Telegram periodically rotates DC IPs, and without refresh the proxy may silently lose connectivity.
+
+The refresh process:
+1. Downloads the latest config from `core.telegram.org`
+2. Validates the downloaded file
+3. Compares with the current config — skips if unchanged
+4. Replaces the config and sends `SIGHUP` to reload without downtime
+
+No user configuration is needed — this runs automatically.
+
 ### Volume Mounting
 
 The container stores `proxy-multi.conf` (Telegram DC addresses) in `/opt/mtproxy/data/`. Mount a volume to persist this configuration across container restarts. The `proxy-secret` file is baked into the image at build time and does not require persistence.
