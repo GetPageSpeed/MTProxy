@@ -47,7 +47,7 @@ DEPDIRS := ${DEP} $(addprefix ${DEP}/,${PROJECTS})
 ALLDIRS := ${DEPDIRS} ${OBJDIRS}
 
 
-.PHONY:	all clean tests docker-image-amd64 docker-run-help-amd64
+.PHONY:	all clean tests test test-tls docker-image-amd64 docker-run-help-amd64
 
 EXELIST	:= ${EXE}/mtproto-proxy
 
@@ -145,4 +145,17 @@ test:
 	echo "Using secret: $$MTPROXY_SECRET" && \
 	timeout 1200s docker compose -f tests/docker-compose.test.yml up --build --exit-code-from tester || \
 		(echo "Test timed out or failed"; docker compose -f tests/docker-compose.test.yml down; exit 1)
+
+test-tls:
+	@if [ -z "$$MTPROXY_SECRET" ]; then \
+		export MTPROXY_SECRET=$$(head -c 16 /dev/urandom | xxd -ps); \
+		echo "Generated MTPROXY_SECRET: $$MTPROXY_SECRET"; \
+	fi && \
+	export MTPROXY_SECRET=$${MTPROXY_SECRET:-$$(head -c 16 /dev/urandom | xxd -ps)} && \
+	echo "Using secret: $$MTPROXY_SECRET" && \
+	timeout 300s docker compose -f tests/docker-compose.tls-test.yml up --build --exit-code-from tester || \
+		(echo "TLS test timed out or failed"; \
+		docker compose -f tests/docker-compose.tls-test.yml logs mtproxy; \
+		docker compose -f tests/docker-compose.tls-test.yml down; exit 1)
+	docker compose -f tests/docker-compose.tls-test.yml down
 
