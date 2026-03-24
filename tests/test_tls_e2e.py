@@ -295,6 +295,100 @@ def parse_tls_server_hello(data):
 # ============================================================
 
 
+def _do_handshake(host, port, secret_bytes, domain=None, timestamp_offset=0):
+    """Build and send a fake-TLS ClientHello, return raw response + client_random.
+
+    The SNI domain MUST match the proxy's -D/EE_DOMAIN setting for the proxy
+    to validate the HMAC and generate an emulated ServerHello.  If SNI doesn't
+    match, the proxy forwards the connection to the real backend without HMAC
+    validation.
+
+    Args:
+        host: Proxy hostname.
+        port: Proxy listening port.
+        secret_bytes: 16-byte proxy secret.
+        domain: SNI domain for the ClientHello. Defaults to EE_DOMAIN env var.
+        timestamp_offset: Seconds to add to current time for the embedded timestamp.
+            Use negative values for timestamps in the past.
+
+    Returns:
+        Tuple of (response_data, client_random) where response_data is the raw
+        bytes received from the proxy and client_random is the 32-byte value
+        embedded in the ClientHello.
+    """
+    if domain is None:
+        domain = os.environ.get("EE_DOMAIN", "172.30.0.10")
+    hello = build_client_hello(domain)
+
+    hello_zeroed = bytearray(hello)
+    hello_zeroed[11:43] = b"\x00" * 32
+    expected = hmac_mod.new(secret_bytes, bytes(hello_zeroed), hashlib.sha256).digest()
+
+    timestamp = int(time.time()) + timestamp_offset
+    ts_bytes = struct.pack("<I", timestamp)
+    xored_ts = bytes(a ^ b for a, b in zip(ts_bytes, expected[28:32]))
+    client_random = expected[:28] + xored_ts
+    hello[11:43] = client_random
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(10)
+    sock.connect((socket.gethostbyname(host), port))
+    sock.sendall(bytes(hello))
+
+    # Read the full response. The proxy (or backend) sends ServerHello + CCS +
+    # encrypted records in one burst. We need the complete data for HMAC
+    # verification.  After 138 bytes we can parse the encrypted record length
+    # to know the exact total.
+    data = b""
+    expected_total = 0
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        try:
+            chunk = sock.recv(16384)
+            if not chunk:
+                break
+            data += chunk
+            # Once we have the app-data header, compute expected total
+            if expected_total == 0 and len(data) >= 138:
+                # ServerHello(127) + CCS(6) + app-data header(5) = 138
+                enc_len = struct.unpack(">H", data[136:138])[0]
+                expected_total = 138 + enc_len
+            if expected_total > 0 and len(data) >= expected_total:
+                break
+        except socket.timeout:
+            break
+    sock.close()
+
+    return data, bytes(client_random)
+
+
+def _verify_server_hmac(response_data, client_random, secret_bytes):
+    """Check whether the server_random in a ServerHello matches the proxy's HMAC.
+
+    The proxy computes server_random = HMAC-SHA256(secret, client_random + zeroed_response).
+    If this matches, the proxy (not the real backend) generated the response.
+
+    Args:
+        response_data: Raw bytes of the full ServerHello response.
+        client_random: The 32-byte client_random sent in the ClientHello.
+        secret_bytes: 16-byte proxy secret.
+
+    Returns:
+        True if the server_random HMAC matches (proxy handled the connection).
+    """
+    if len(response_data) < 43:
+        return False
+
+    server_random = response_data[11:43]
+
+    zeroed = bytearray(response_data)
+    zeroed[11:43] = b"\x00" * 32
+
+    buf = client_random + bytes(zeroed)
+    expected = hmac_mod.new(secret_bytes, buf, hashlib.sha256).digest()
+    return expected[:32] == server_random
+
+
 def wait_for_proxy(host, port, timeout=60):
     """Poll proxy port until it accepts TCP connections.
 
@@ -507,6 +601,107 @@ def test_emulation_matches_backend():
     )
 
 
+def test_server_random_hmac():
+    """Verify the proxy's emulated ServerHello has a correct server_random HMAC.
+
+    The proxy computes server_random = HMAC-SHA256(secret, client_random + zeroed_response).
+    Verifying this proves the proxy (not the real backend) generated the response.
+    """
+    host = os.environ.get("MTPROXY_HOST", "mtproxy")
+    port = int(os.environ.get("MTPROXY_PORT", "8443"))
+    secret_hex = os.environ.get("MTPROXY_SECRET", "")
+    assert secret_hex, "MTPROXY_SECRET environment variable not set"
+    secret_bytes = bytes.fromhex(secret_hex)
+
+    data, client_random = _do_handshake(host, port, secret_bytes)
+
+    assert len(data) >= 138, (
+        f"Response too short ({len(data)} bytes) — proxy likely rejected the ClientHello"
+    )
+    assert _verify_server_hmac(data, client_random, secret_bytes), (
+        "server_random HMAC mismatch — proxy did not generate this ServerHello"
+    )
+    print("  server_random HMAC verified: proxy generated the ServerHello")
+
+
+def test_wrong_secret_rejected():
+    """Verify that a ClientHello signed with the wrong secret is rejected.
+
+    The proxy should forward the connection to the real TLS backend.
+    We detect this by checking that the server_random HMAC does NOT match.
+    """
+    host = os.environ.get("MTPROXY_HOST", "mtproxy")
+    port = int(os.environ.get("MTPROXY_PORT", "8443"))
+    secret_hex = os.environ.get("MTPROXY_SECRET", "")
+    assert secret_hex, "MTPROXY_SECRET environment variable not set"
+    real_secret = bytes.fromhex(secret_hex)
+
+    # Use a different secret for the HMAC (flip every bit of the real secret)
+    wrong_secret = bytes(b ^ 0xFF for b in real_secret)
+
+    data, client_random = _do_handshake(host, port, wrong_secret)
+
+    assert len(data) >= 10, (
+        f"No response received ({len(data)} bytes) — expected backend ServerHello"
+    )
+    assert not _verify_server_hmac(data, client_random, real_secret), (
+        "server_random HMAC matched with wrong secret — proxy should have rejected this"
+    )
+    print("  Wrong secret correctly rejected: response is from real backend")
+
+
+def test_stale_timestamp_rejected():
+    """Verify that a ClientHello with a 10-minute-old timestamp is rejected.
+
+    With the tightened 2-minute replay window (MAX_ALLOWED_TIMESTAMP_ERROR=120s),
+    a timestamp 600 seconds in the past should be rejected.
+    """
+    host = os.environ.get("MTPROXY_HOST", "mtproxy")
+    port = int(os.environ.get("MTPROXY_PORT", "8443"))
+    secret_hex = os.environ.get("MTPROXY_SECRET", "")
+    assert secret_hex, "MTPROXY_SECRET environment variable not set"
+    secret_bytes = bytes.fromhex(secret_hex)
+
+    data, client_random = _do_handshake(
+        host, port, secret_bytes, timestamp_offset=-600
+    )
+
+    assert len(data) >= 10, (
+        f"No response received ({len(data)} bytes) — expected backend ServerHello"
+    )
+    assert not _verify_server_hmac(data, client_random, secret_bytes), (
+        "server_random HMAC matched with stale timestamp — "
+        "proxy should have rejected this (600s > 120s window)"
+    )
+    print("  Stale timestamp (600s) correctly rejected")
+
+
+def test_near_limit_timestamp_accepted():
+    """Verify that a ClientHello with a 90-second-old timestamp is accepted.
+
+    With MAX_ALLOWED_TIMESTAMP_ERROR=120s, a timestamp 90 seconds in the past
+    is within the window and should be accepted.
+    """
+    host = os.environ.get("MTPROXY_HOST", "mtproxy")
+    port = int(os.environ.get("MTPROXY_PORT", "8443"))
+    secret_hex = os.environ.get("MTPROXY_SECRET", "")
+    assert secret_hex, "MTPROXY_SECRET environment variable not set"
+    secret_bytes = bytes.fromhex(secret_hex)
+
+    data, client_random = _do_handshake(
+        host, port, secret_bytes, timestamp_offset=-90
+    )
+
+    assert len(data) >= 138, (
+        f"Response too short ({len(data)} bytes) — proxy rejected the ClientHello"
+    )
+    assert _verify_server_hmac(data, client_random, secret_bytes), (
+        "server_random HMAC mismatch — proxy should have accepted this "
+        "(90s < 120s window)"
+    )
+    print("  Near-limit timestamp (90s) correctly accepted")
+
+
 def _patch_telethon_faketls():
     """Patch TelethonFakeTLS to read all encrypted records in ServerHello.
 
@@ -629,8 +824,12 @@ def main():
     required_tests = [
         ("test_proxy_accepts_connections", test_proxy_accepts_connections),
         ("test_fake_tls_handshake", test_fake_tls_handshake),
+        ("test_server_random_hmac", test_server_random_hmac),
         ("test_probe_backend_tls13", test_probe_backend_tls13),
         ("test_emulation_matches_backend", test_emulation_matches_backend),
+        ("test_wrong_secret_rejected", test_wrong_secret_rejected),
+        ("test_stale_timestamp_rejected", test_stale_timestamp_rejected),
+        ("test_near_limit_timestamp_accepted", test_near_limit_timestamp_accepted),
     ]
 
     # Tests that warn on failure (require Telegram DC connectivity + correct
