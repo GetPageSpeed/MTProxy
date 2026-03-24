@@ -10,6 +10,7 @@ import hashlib
 import hmac as hmac_mod
 import os
 import socket
+import ssl
 import struct
 import sys
 import time
@@ -707,6 +708,139 @@ def test_near_limit_timestamp_accepted():
     print("  Near-limit timestamp (90s) correctly accepted")
 
 
+def test_unknown_sni_falls_back():
+    """Verify that a ClientHello with an unknown SNI is forwarded to the backend.
+
+    When the SNI in the ClientHello does not match any configured -D domain,
+    the proxy falls back to default_domain_info and forwards the connection
+    to the real backend. This tests the anti-detection path: a censor probing
+    with a ClientHello for a different domain sees a real TLS server.
+    """
+    host = os.environ.get("MTPROXY_HOST", "mtproxy")
+    port = int(os.environ.get("MTPROXY_PORT", "8443"))
+    secret_hex = os.environ.get("MTPROXY_SECRET", "")
+    assert secret_hex, "MTPROXY_SECRET environment variable not set"
+    secret_bytes = bytes.fromhex(secret_hex)
+
+    # Use a domain that does NOT match the proxy's -D setting
+    data, client_random = _do_handshake(
+        host, port, secret_bytes, domain="unknown.example.com"
+    )
+
+    assert len(data) >= 10, (
+        f"No response received ({len(data)} bytes) — expected backend ServerHello"
+    )
+    assert not _verify_server_hmac(data, client_random, secret_bytes), (
+        "server_random HMAC matched with unknown SNI — proxy should have "
+        "forwarded to backend"
+    )
+    print("  Unknown SNI correctly forwarded to backend")
+
+
+def test_duplicate_client_random_rejected():
+    """Verify that replaying the same ClientHello is detected and rejected.
+
+    The proxy tracks seen client_random values to prevent replay attacks.
+    The first handshake should succeed; the second with identical bytes should
+    be forwarded to the real backend.
+    """
+    host = os.environ.get("MTPROXY_HOST", "mtproxy")
+    port = int(os.environ.get("MTPROXY_PORT", "8443"))
+    secret_hex = os.environ.get("MTPROXY_SECRET", "")
+    assert secret_hex, "MTPROXY_SECRET environment variable not set"
+    secret_bytes = bytes.fromhex(secret_hex)
+    domain = os.environ.get(
+        "EE_DOMAIN", os.environ.get("TLS_BACKEND_HOST", "172.30.0.10")
+    )
+
+    # Build ClientHello and embed HMAC + timestamp
+    hello = build_client_hello(domain)
+    hello_zeroed = bytearray(hello)
+    hello_zeroed[11:43] = b"\x00" * 32
+    expected = hmac_mod.new(
+        secret_bytes, bytes(hello_zeroed), hashlib.sha256
+    ).digest()
+    timestamp = int(time.time())
+    ts_bytes = struct.pack("<I", timestamp)
+    xored_ts = bytes(a ^ b for a, b in zip(ts_bytes, expected[28:32]))
+    client_random = expected[:28] + xored_ts
+    hello[11:43] = client_random
+    hello_bytes = bytes(hello)
+
+    def send_hello():
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(10)
+        sock.connect((socket.gethostbyname(host), port))
+        sock.sendall(hello_bytes)
+        data = b""
+        expected_total = 0
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            try:
+                chunk = sock.recv(16384)
+                if not chunk:
+                    break
+                data += chunk
+                if expected_total == 0 and len(data) >= 138:
+                    enc_len = struct.unpack(">H", data[136:138])[0]
+                    expected_total = 138 + enc_len
+                if expected_total > 0 and len(data) >= expected_total:
+                    break
+            except socket.timeout:
+                break
+        sock.close()
+        return data
+
+    # First send — proxy should accept (valid HMAC, fresh client_random)
+    data1 = send_hello()
+    assert len(data1) >= 138, (
+        f"First send too short ({len(data1)} bytes) — proxy should accept"
+    )
+    assert _verify_server_hmac(data1, client_random, secret_bytes), (
+        "First send: HMAC mismatch — proxy should have accepted this handshake"
+    )
+
+    # Second send — identical bytes, duplicate client_random → forwarded to backend
+    data2 = send_hello()
+    assert len(data2) >= 10, (
+        f"Second send: no response ({len(data2)} bytes) — expected backend response"
+    )
+    assert not _verify_server_hmac(data2, client_random, secret_bytes), (
+        "Second send: HMAC matched — proxy should have rejected duplicate "
+        "client_random"
+    )
+    print("  Duplicate client_random correctly rejected on replay")
+
+
+def test_browser_tls_sees_real_backend():
+    """Verify a standard TLS client gets the real backend's certificate.
+
+    This is the core anti-detection test: a censor probing with a regular
+    HTTPS connection (e.g. curl, browser) should complete a real TLS handshake
+    with the backend server, not receive a TLS error or proxy-generated response.
+    """
+    host = os.environ.get("MTPROXY_HOST", "mtproxy")
+    port = int(os.environ.get("MTPROXY_PORT", "8443"))
+
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(10)
+    sock.connect((socket.gethostbyname(host), port))
+
+    ssock = ctx.wrap_socket(sock, server_hostname="probe.example.com")
+
+    cert = ssock.getpeercert(binary_form=True)
+    version = ssock.version()
+    ssock.close()
+
+    assert cert is not None, "No certificate received from backend"
+    assert version, "No TLS version negotiated"
+    print(f"  Browser TLS handshake succeeded: {version}, cert={len(cert)} bytes")
+
+
 def _patch_telethon_faketls():
     """Patch TelethonFakeTLS to read all encrypted records in ServerHello.
 
@@ -835,6 +969,9 @@ def main():
         ("test_wrong_secret_rejected", test_wrong_secret_rejected),
         ("test_stale_timestamp_rejected", test_stale_timestamp_rejected),
         ("test_near_limit_timestamp_accepted", test_near_limit_timestamp_accepted),
+        ("test_unknown_sni_falls_back", test_unknown_sni_falls_back),
+        ("test_duplicate_client_random_rejected", test_duplicate_client_random_rejected),
+        ("test_browser_tls_sees_real_backend", test_browser_tls_sees_real_backend),
     ]
 
     # Tests that warn on failure (require Telegram DC connectivity + correct

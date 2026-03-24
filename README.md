@@ -279,6 +279,8 @@ Instead of mimicking a public website, you can run your own web server (e.g., ng
 - The domain's DNS A record points to the MTProxy server
 - Valid MTProxy clients connect normally; all other traffic is forwarded to nginx
 
+**Anti-detection:** Every connection that fails MTProxy validation — wrong secret, expired timestamp, unknown SNI, replayed handshake, malformed ClientHello, or plain non-TLS traffic — is transparently forwarded to the backend rather than rejected with a TLS error. A censor probing the server with a standard browser sees a real HTTPS website, making the proxy indistinguishable from a normal web server under active probing.
+
 **Requirements:**
 - The backend must support **TLS 1.3** (MTProxy verifies this at startup)
 - The `-D` value **must be a hostname**, not a raw IP address. Using an IP address (e.g., `-D 127.0.0.1:8443`) breaks `ee` secrets because TLS SNI does not support IP addresses (RFC 6066)

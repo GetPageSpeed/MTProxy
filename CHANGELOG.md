@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - Fuzz testing for protocol parsers — libFuzzer harnesses with ASan + UBSan for TLS ClientHello/ServerHello and HTTP request parsing. Extracted pure parsing logic into standalone modules (`net/net-tls-parse.{c,h}`, `net/net-http-parse.{c,h}`) so harnesses link without the full engine. CI runs each target for 60 seconds on every push/PR ([#51](https://github.com/GetPageSpeed/MTProxy/issues/51))
+- E2E tests for anti-detection fallback scenarios: unknown SNI forwarding, duplicate `client_random` replay rejection, and standard browser TLS passthrough ([#45](https://github.com/GetPageSpeed/MTProxy/issues/45))
+- Documented anti-detection properties of TCP Splitting mode — all validation failures are transparently forwarded to the backend
 
 ## [3.0.21] - 2026-03-25
 
