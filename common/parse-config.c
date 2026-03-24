@@ -141,7 +141,7 @@ long long cfg_getint_signed_zero (void) {
     x = x * 10 + sgn * (*(s++) - '0');
   }
   if (s == cfg_cur + (sgn < 0)) {
-    return (-1LL << 63);
+    return ((long long)(1ULL << 63));
   } else {
     cfg_cur = s;
     return x;

@@ -620,7 +620,7 @@ int unlock_job (JOB_REF_ARG (job)) {
     barrier ();
     assert (job->j_flags & JF_LOCKED);
     int flags = job->j_flags;
-    int todo = flags & job->j_status & (-1 << 24);
+    int todo = flags & job->j_status & ((int)0xFF000000u);
     if (!todo) /* {{{ */ {
       int new_flags = flags & ~JF_LOCKED;
       if (!__sync_bool_compare_and_swap (&job->j_flags, flags, new_flags)) {
@@ -1510,7 +1510,9 @@ void job_message_send (JOB_REF_ARG (job), JOB_REF_ARG (src), unsigned int type, 
   M->next = NULL;
   M->flags = flags;
   M->destructor = destroy;
-  memcpy (M->payload, payload, payload_ints * 4);
+  if (payload_ints) {
+    memcpy (M->payload, payload, payload_ints * 4);
+  }
   (dup ? rwm_clone : rwm_move) (&M->message, raw);
 
   struct job_message_queue *q = job_message_queue_get (job);
@@ -1528,7 +1530,9 @@ void job_message_send_data (JOB_REF_ARG (job), JOB_REF_ARG (src), unsigned int t
   M->payload_ints = payload_ints;
   M->next = NULL;
   M->flags = flags;
-  memcpy (M->payload, payload, payload_ints * 4);
+  if (payload_ints) {
+    memcpy (M->payload, payload, payload_ints * 4);
+  }
   M->message_ptr1 = ptr1;
   M->message_ptr2 = ptr2;
   M->message_int1 = int1;
@@ -1551,7 +1555,9 @@ void job_message_send_fake (JOB_REF_ARG (job), int (*receive_message)(job_t job,
   M->next = NULL;
   M->flags = flags;
   M->destructor = destroy;
-  memcpy (M->payload, payload, payload_ints * 4);
+  if (payload_ints) {
+    memcpy (M->payload, payload, payload_ints * 4);
+  }
   (dup ? rwm_clone : rwm_move) (&M->message, raw);
 
   int r = receive_message (job, M, extra);

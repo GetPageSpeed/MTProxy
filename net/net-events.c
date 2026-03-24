@@ -757,11 +757,11 @@ unsigned get_my_ipv4 (void) {
     unsigned ip = ntohl (((struct sockaddr_in *) ifa->ifa_addr)->sin_addr.s_addr);
     unsigned mask = ntohl (((struct sockaddr_in *) ifa->ifa_netmask)->sin_addr.s_addr);
     // fprintf (stderr, "%08x %08x\t%s\n", ip, mask, ifa->ifa_name);
-    if ((ip & (-1 << 24)) == (10 << 24) && (mask < my_netmask || (my_ip >> 24) != 10)) {
+    if ((ip & ((int)0xFF000000u)) == (10 << 24) && (mask < my_netmask || (my_ip >> 24) != 10)) {
       my_ip = ip;
       my_netmask = mask;
       my_iface = ifa->ifa_name;
-    } else if ((ip & (-1 << 24)) != (127 << 24) && mask < my_netmask && (my_ip >> 24) != 10) {
+    } else if ((ip & ((int)0xFF000000u)) != (127 << 24) && mask < my_netmask && (my_ip >> 24) != 10) {
       my_ip = ip;
       my_netmask = mask;
       my_iface = ifa->ifa_name;
