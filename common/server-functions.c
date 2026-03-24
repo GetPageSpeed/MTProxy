@@ -35,7 +35,9 @@
 #include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
+#ifdef __GLIBC__
 #include <execinfo.h>
+#endif
 #include <fcntl.h>
 #include <getopt.h>
 #include <grp.h>
@@ -168,11 +170,15 @@ const char *get_version_string (void) {
 }
 
 void print_backtrace (void) {
+#ifdef __GLIBC__
   void *buffer[64];
   int nptrs = backtrace (buffer, 64);
   kwrite (2, "\n------- Stack Backtrace -------\n", 33);
   backtrace_symbols_fd (buffer, nptrs, 2);
   kwrite (2, "-------------------------------\n", 32);
+#else
+  kwrite (2, "\n(stack trace unavailable on musl)\n", 35);
+#endif
   const char *s = get_version_string ();
   if (s) {
     kwrite (2, s, strlen (s));
