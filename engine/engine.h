@@ -113,6 +113,8 @@ typedef struct {
 
   int cron_subclass;
   int precise_cron_subclass;
+
+  int (*has_active_connections)(void);
 } server_functions_t;
 
 typedef struct {
@@ -144,6 +146,7 @@ typedef struct event_precise_cron {
 
 void precise_cron_function_insert (struct event_precise_cron *ev);
 void precise_cron_function_remove (struct event_precise_cron *ev);
+void engine_resume_precise_cron (void);
 
 void set_signals_handlers (void);
 void engine_init (const char *const pwd_filename, int do_not_open_port);

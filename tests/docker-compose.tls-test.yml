@@ -16,7 +16,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     environment:
-      - SECRET=${MTPROXY_SECRET}
+      - SECRET=${MTPROXY_SECRET:-d41d8cd98f00b204e9800998ecf8427e}
       - PORT=8443
       - STATS_PORT=8888
       # Use IP directly — gethostbyname() can't resolve Docker service names
@@ -35,7 +35,7 @@ services:
       - MTPROXY_HOST=mtproxy
       - MTPROXY_PORT=8443
       - MTPROXY_STATS_PORT=8888
-      - MTPROXY_SECRET=${MTPROXY_SECRET}
+      - MTPROXY_SECRET=${MTPROXY_SECRET:-d41d8cd98f00b204e9800998ecf8427e}
       - TLS_BACKEND_HOST=tls-backend
       - TLS_BACKEND_PORT=443
       # Must match EE_DOMAIN in mtproxy service (used for ee secret in Telethon test)

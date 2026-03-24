@@ -404,6 +404,8 @@ struct precise_cron_job_extra {
   struct event_timer ev;
 };
 
+static job_t stored_precise_cron_job;
+
 int precise_cron_job_run (job_t job, int op, struct job_thread *JT) /* {{{ */ {
   if (op != JS_RUN && op != JS_ALARM) {
     return JOB_ERROR;
@@ -413,10 +415,21 @@ int precise_cron_job_run (job_t job, int op, struct job_thread *JT) /* {{{ */ {
   }
 
   do_precise_cron ();
+
+  engine_t *E = engine_state;
+  if (E->F->has_active_connections && !E->F->has_active_connections ()) {
+    return 0;
+  }
   job_timer_insert (job, precise_now + 0.001 * (1 + drand48_j ()));
   return 0;
 }
-/* }}} */ 
+/* }}} */
+
+void engine_resume_precise_cron (void) {
+  if (stored_precise_cron_job) {
+    job_signal (JOB_REF_CREATE_PASS (stored_precise_cron_job), JS_RUN);
+  }
+}
 
 int terminate_job_run (job_t job, int op, struct job_thread *JT) {
   if (op == JS_RUN) {
@@ -454,6 +467,7 @@ void default_engine_server_start (void) /* {{{ */ {
   //struct precise_cron_job_extra *e = (void *)precise_cron_job->j_custom;
   //memset (e, 0, sizeof (*e)); /* no need, create_async_job memsets itself */
   precise_cron_job->j_refcnt ++;
+  stored_precise_cron_job = precise_cron_job;
   schedule_job (JOB_REF_PASS (precise_cron_job));
 
   job_t update_job_stats = job_timer_alloc (JC_MAIN, update_job_stats_gw, NULL);

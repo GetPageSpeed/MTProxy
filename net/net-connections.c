@@ -66,6 +66,8 @@
 
 #include "common/common-stats.h"
 
+extern void engine_resume_precise_cron (void);
+
 //struct process_id PID;
 
 #define        USE_EPOLLET        1
@@ -729,7 +731,9 @@ connection_job_t alloc_new_connection (int cfd, conn_target_job_t CTJ, listening
         
         if (LC->flags & C_SPECIAL) {
           c->flags |= C_SPECIAL;
-          __sync_fetch_and_add (&active_special_connections, 1);
+          if (__sync_fetch_and_add (&active_special_connections, 1) == 0) {
+            engine_resume_precise_cron ();
+          }
 
           if (active_special_connections > max_special_connections) {
             vkprintf (active_special_connections >= max_special_connections + 16 ? 0 : 1, "ERROR: forced to accept connection when special connections limit was reached (%d of %d)\n", active_special_connections, max_special_connections);
