@@ -29,6 +29,67 @@ def test_http_stats():
         time.sleep(1)
     return False
 
+def test_prometheus_metrics():
+    """Test that the Prometheus metrics endpoint returns valid exposition format."""
+    print("Testing Prometheus metrics...")
+    host = os.environ.get("MTPROXY_HOST", "mtproxy")
+    stats_port = os.environ.get("MTPROXY_STATS_PORT", "8888")
+    url = f"http://{host}:{stats_port}/metrics"
+
+    for i in range(5):
+        try:
+            response = requests.get(url, timeout=3)
+            if response.status_code != 200:
+                print(f"Prometheus metrics failed: {response.status_code}")
+                time.sleep(1)
+                continue
+
+            body = response.text
+
+            # Verify Prometheus exposition format markers
+            assert "# HELP" in body, "Missing # HELP lines"
+            assert "# TYPE" in body, "Missing # TYPE lines"
+
+            # Verify key metrics exist
+            required_metrics = [
+                "mtproxy_queries_total",
+                "mtproxy_ext_connections",
+                "mtproxy_uptime_seconds",
+                "mtproxy_workers",
+                "mtproxy_forwarded_queries_total",
+                "mtproxy_active_connections",
+            ]
+            for metric in required_metrics:
+                assert metric in body, f"Missing metric: {metric}"
+
+            # Verify metric values are numeric
+            for line in body.strip().split("\n"):
+                if line.startswith("#") or not line.strip():
+                    continue
+                parts = line.split()
+                assert len(parts) == 2, f"Bad metric line: {line}"
+                name, value = parts
+                try:
+                    float(value)
+                except ValueError:
+                    raise AssertionError(f"Non-numeric value for {name}: {value}")
+
+            # Verify counter and gauge types are declared
+            assert "# TYPE mtproxy_queries_total counter" in body
+            assert "# TYPE mtproxy_uptime_seconds gauge" in body
+
+            print(f"Prometheus metrics OK: {len(body)} bytes, "
+                  f"{sum(1 for l in body.split(chr(10)) if not l.startswith('#') and l.strip())} metrics")
+            return True
+        except AssertionError as e:
+            print(f"Prometheus metrics assertion failed: {e}")
+            return False
+        except Exception as e:
+            print(f"Prometheus metrics exception (attempt {i+1}): {e}")
+        time.sleep(1)
+    return False
+
+
 def test_mtproto_port():
     """Test that the MTProto port accepts TCP connections."""
     print("Testing MTProto port...")
@@ -79,12 +140,15 @@ if __name__ == "__main__":
     time.sleep(5)
     
     stats_ok = test_http_stats()
+    metrics_ok = test_prometheus_metrics()
     mtproto_ok = test_mtproto_port()
 
     # MTProto port is the core test - it must work
     if mtproto_ok:
         if not stats_ok:
             print("WARNING: HTTP stats failed, but MTProto port is OK.")
+        if not metrics_ok:
+            print("WARNING: Prometheus metrics failed, but MTProto port is OK.")
         print("Tests passed!")
         sys.exit(0)
     else:
