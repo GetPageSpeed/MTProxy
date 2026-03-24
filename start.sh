@@ -4,35 +4,41 @@ set -e
 # Save original arguments before positional parameters are repurposed for secrets
 ORIG_ARGS="$*"
 
-# proxy-secret is baked into the image at build time
-if [ ! -f proxy-secret ]; then
+# Direct mode: connect to Telegram DCs without ME relay.
+# Must be explicitly enabled. Incompatible with PROXY_TAG.
+DIRECT_MODE=${DIRECT_MODE:-false}
+
+# proxy-secret is baked into the image at build time (only needed for ME relay mode)
+if [ "$DIRECT_MODE" != "true" ] && [ ! -f proxy-secret ]; then
     echo "ERROR: proxy-secret not found. The Docker image may be corrupted." >&2
     exit 1
 fi
 
-# Download/refresh proxy config to data/ (persisted via volume mount)
-CONFIG_PATH="data/proxy-multi.conf"
-NEEDS_DOWNLOAD=0
+# Download/refresh proxy config to data/ (only in ME relay mode)
+if [ "$DIRECT_MODE" != "true" ]; then
+    CONFIG_PATH="data/proxy-multi.conf"
+    NEEDS_DOWNLOAD=0
 
-if [ ! -f "$CONFIG_PATH" ]; then
-    NEEDS_DOWNLOAD=1
-elif [ $(find "$CONFIG_PATH" -mtime +1 2>/dev/null | wc -l) -gt 0 ]; then
-    NEEDS_DOWNLOAD=1
-fi
+    if [ ! -f "$CONFIG_PATH" ]; then
+        NEEDS_DOWNLOAD=1
+    elif [ $(find "$CONFIG_PATH" -mtime +1 2>/dev/null | wc -l) -gt 0 ]; then
+        NEEDS_DOWNLOAD=1
+    fi
 
-if [ "$NEEDS_DOWNLOAD" -eq 1 ]; then
-    echo "Downloading proxy config..."
-    if curl --connect-timeout 10 --max-time 30 --retry 3 --retry-delay 2 -fsSL https://core.telegram.org/getProxyConfig -o "$CONFIG_PATH.tmp"; then
-        mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
-        echo "Proxy config downloaded successfully."
-    else
-        rm -f "$CONFIG_PATH.tmp"
-        if [ -f "$CONFIG_PATH" ]; then
-            echo "WARNING: Failed to refresh proxy config, using cached copy." >&2
+    if [ "$NEEDS_DOWNLOAD" -eq 1 ]; then
+        echo "Downloading proxy config..."
+        if curl --connect-timeout 10 --max-time 30 --retry 3 --retry-delay 2 -fsSL https://core.telegram.org/getProxyConfig -o "$CONFIG_PATH.tmp"; then
+            mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
+            echo "Proxy config downloaded successfully."
         else
-            echo "ERROR: Failed to download proxy config and no cached copy exists." >&2
-            echo "Ensure core.telegram.org is reachable, or provide proxy-multi.conf in the data/ volume." >&2
-            exit 1
+            rm -f "$CONFIG_PATH.tmp"
+            if [ -f "$CONFIG_PATH" ]; then
+                echo "WARNING: Failed to refresh proxy config, using cached copy." >&2
+            else
+                echo "ERROR: Failed to download proxy config and no cached copy exists." >&2
+                echo "Ensure core.telegram.org is reachable, or provide proxy-multi.conf in the data/ volume." >&2
+                exit 1
+            fi
         fi
     fi
 fi
@@ -136,7 +142,12 @@ if [ -n "$IP_ALLOWLIST" ]; then
     CMD="$CMD --ip-allowlist $IP_ALLOWLIST"
 fi
 
-CMD="$CMD --aes-pwd proxy-secret data/proxy-multi.conf -M $WORKERS -u mtproxy $ORIG_ARGS"
+if [ "$DIRECT_MODE" = "true" ]; then
+    CMD="$CMD --direct -M $WORKERS -u mtproxy $ORIG_ARGS"
+    echo "Direct mode: connecting directly to Telegram DCs (no ME relay)"
+else
+    CMD="$CMD --aes-pwd proxy-secret data/proxy-multi.conf -M $WORKERS -u mtproxy $ORIG_ARGS"
+fi
 
 echo "Starting MTProxy with command: $CMD"
 
@@ -162,7 +173,9 @@ fi
 echo "============================="
 echo ""
 
-# Start cron daemon for config refresh
-crond
+# Start cron daemon for config refresh (only in ME relay mode)
+if [ "$DIRECT_MODE" != "true" ]; then
+    crond
+fi
 
 exec $CMD

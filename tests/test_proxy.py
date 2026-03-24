@@ -136,21 +136,24 @@ if __name__ == "__main__":
     # Check upstream connectivity first (informational)
     check_upstream_connectivity()
 
-    # Give the proxy time to start
-    time.sleep(5)
+    # Give the proxy time to start and establish ME relay connections
+    time.sleep(10)
     
     stats_ok = test_http_stats()
     metrics_ok = test_prometheus_metrics()
     mtproto_ok = test_mtproto_port()
 
-    # MTProto port is the core test - it must work
-    if mtproto_ok:
-        if not stats_ok:
-            print("WARNING: HTTP stats failed, but MTProto port is OK.")
-        if not metrics_ok:
-            print("WARNING: Prometheus metrics failed, but MTProto port is OK.")
+    failed = []
+    if not mtproto_ok:
+        failed.append("MTProto port")
+    if not stats_ok:
+        failed.append("HTTP stats")
+    if not metrics_ok:
+        failed.append("Prometheus metrics")
+
+    if failed:
+        print(f"Tests FAILED: {', '.join(failed)}")
+        sys.exit(1)
+    else:
         print("Tests passed!")
         sys.exit(0)
-    else:
-        print("Tests failed! MTProto port not accessible.")
-        sys.exit(1)

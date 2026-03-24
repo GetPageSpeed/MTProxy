@@ -57,7 +57,7 @@ int try_open_port (int port, int quit_on_fail) /* {{{ */ {
   engine_t *E = engine_state;
   if (engine_check_tcp_enabled ()) {
     struct in_addr l;
-    l.s_addr = htonl(0x7f000001);
+    l.s_addr = E->settings_addr.s_addr ? E->settings_addr.s_addr : htonl (INADDR_ANY);
     E->sfd = server_socket (port, l, engine_get_backlog (), 0);
     vkprintf (1, "opened tcp socket\n");
     if (E->sfd < 0) {
@@ -96,12 +96,12 @@ void engine_do_open_port (void) /* {{{ */ {
   int start_port = engine_state->start_port;
   int end_port = engine_state->end_port;
 
-  if (port > 0 && port < PRIVILEGED_TCP_PORTS) {
+  if (port > 0) {
     assert (try_open_port (port, 1) >= 0);
     return;
   }
 
-  if (port <= 0 && start_port <= end_port && start_port < PRIVILEGED_TCP_PORTS) {
+  if (port <= 0 && start_port <= end_port) {
     engine_state->port = try_open_port_range (start_port, end_port, 100, port_mod, 1);
     assert (engine_state->port >= 0);
     return;

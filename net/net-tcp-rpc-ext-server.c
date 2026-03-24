@@ -49,6 +49,7 @@
 #include "net/net-tcp-connections.h"
 #include "net/net-tcp-rpc-ext-server.h"
 #include "net/net-thread.h"
+#include "mtproto/mtproto-dc-table.h"
 
 #include "vv/vv-io.h"
 
@@ -145,6 +146,243 @@ int tcp_proxy_pass_write_packet (connection_job_t C, struct raw_message *raw) {
   rwm_union (&CONN_INFO(C)->out, raw);
   return 0;
 }
+
+/*
+ *
+ *      DIRECT-TO-DC RELAY
+ *
+ */
+
+extern int direct_mode;
+extern long long direct_dc_connections_created, direct_dc_connections_active;
+
+static int tcp_direct_client_parse_execute (connection_job_t C);
+static int tcp_direct_dc_parse_execute (connection_job_t C);
+static int tcp_direct_dc_connected (connection_job_t C);
+static int tcp_direct_close (connection_job_t C, int who);
+
+/* Client-side relay: keeps the client's AES-CTR crypto active */
+conn_type_t ct_direct_client = {
+  .magic = CONN_FUNC_MAGIC,
+  .flags = C_RAWMSG,
+  .title = "direct_client",
+  .parse_execute = tcp_direct_client_parse_execute,
+  .close = tcp_direct_close,
+  .write_packet = tcp_proxy_pass_write_packet,
+  .connected = server_noop,
+  .crypto_init = aes_crypto_ctr128_init,
+  .crypto_free = aes_crypto_free,
+  .crypto_encrypt_output = cpu_tcp_aes_crypto_ctr128_encrypt_output,
+  .crypto_decrypt_input = cpu_tcp_aes_crypto_ctr128_decrypt_input,
+  .crypto_needed_output_bytes = cpu_tcp_aes_crypto_ctr128_needed_output_bytes,
+};
+
+/* DC-side relay: its own AES-CTR crypto for the proxy→DC obfuscated2 connection */
+conn_type_t ct_direct_dc = {
+  .magic = CONN_FUNC_MAGIC,
+  .flags = C_RAWMSG,
+  .title = "direct_dc",
+  .init_accepted = server_failed,
+  .parse_execute = tcp_direct_dc_parse_execute,
+  .connected = tcp_direct_dc_connected,
+  .close = tcp_direct_close,
+  .write_packet = tcp_proxy_pass_write_packet,
+  .crypto_init = aes_crypto_ctr128_init,
+  .crypto_free = aes_crypto_free,
+  .crypto_encrypt_output = cpu_tcp_aes_crypto_ctr128_encrypt_output,
+  .crypto_decrypt_input = cpu_tcp_aes_crypto_ctr128_decrypt_input,
+  .crypto_needed_output_bytes = cpu_tcp_aes_crypto_ctr128_needed_output_bytes,
+};
+
+/* Relay bytes from one end to the other (client→DC or DC→client).
+   Identical to tcp_proxy_pass_parse_execute but the paired connection
+   has crypto enabled, so the engine will encrypt before flushing. */
+static int tcp_direct_relay (connection_job_t C) {
+  struct connection_info *c = CONN_INFO(C);
+  if (!c->extra) {
+    fail_connection (C, -1);
+    return 0;
+  }
+  job_t E = job_incref (c->extra);
+  struct connection_info *e = CONN_INFO(E);
+
+  struct raw_message *r = malloc (sizeof (*r));
+  rwm_move (r, &c->in);
+  rwm_init (&c->in, 0);
+  vkprintf (3, "direct relay %d bytes to %s:%d\n", r->total_bytes, show_remote_ip (E), e->remote_port);
+  mpq_push_w (e->out_queue, PTR_MOVE(r), 0);
+  job_signal (JOB_REF_PASS (E), JS_RUN);
+  return 0;
+}
+
+static int tcp_direct_client_parse_execute (connection_job_t C) {
+  return tcp_direct_relay (C);
+}
+
+static int tcp_direct_dc_parse_execute (connection_job_t C) {
+  return tcp_direct_relay (C);
+}
+
+static int tcp_direct_close (connection_job_t C, int who) {
+  struct connection_info *c = CONN_INFO(C);
+  vkprintf (1, "closing direct connection #%d %s:%d -> %s:%d\n", c->fd, show_our_ip (C), c->our_port, show_remote_ip (C), c->remote_port);
+  if (c->type == &ct_direct_client && direct_dc_connections_active > 0) {
+    direct_dc_connections_active--;
+  }
+  if (c->extra) {
+    job_t E = PTR_MOVE (c->extra);
+    fail_connection (E, -23);
+    job_decref (JOB_REF_PASS (E));
+  }
+  return cpu_server_close_connection (C, who);
+}
+
+/* Called when the outbound TCP connection to the DC is established.
+   Generates and sends the obfuscated2 init payload. */
+static int tcp_direct_dc_connected (connection_job_t C) {
+  struct connection_info *c = CONN_INFO(C);
+  struct tcp_rpc_data *D = TCP_RPC_DATA(C);
+  int target_dc = D->extra_int4;
+
+  vkprintf (1, "direct DC connection established (fd=%d), target DC=%d, sending obfuscated2 init\n", c->fd, target_dc);
+
+  /* Generate 64-byte obfuscated2 init payload */
+  unsigned char init[64];
+  int tries = 0;
+  do {
+    RAND_bytes (init, 64);
+    tries++;
+  } while (
+    init[0] == 0xef ||
+    *(unsigned *)init == 0x44414548 ||   /* "HEAD" */
+    *(unsigned *)init == 0x54534f50 ||   /* "POST" */
+    *(unsigned *)init == 0x20544547 ||   /* "GET " */
+    *(unsigned *)init == 0x4954504f ||   /* "OPTI" */
+    *(unsigned *)init == 0xeeeeeeee ||
+    *(unsigned *)init == 0xdddddddd ||
+    *(unsigned *)init == 0xefefefef ||
+    *(unsigned *)(init + 4) == 0x00000000
+  );
+
+  /* Set protocol tag (intermediate transport) and target DC */
+  *(unsigned *)(init + 56) = 0xeeeeeeee;
+  *(short *)(init + 60) = (short)target_dc;
+
+  /* Derive AES keys -- NO secret mixing (DCs don't know proxy secret).
+     Proxy is acting as client:
+       write (encrypt outgoing) = forward direction from init
+       read (decrypt incoming)  = reversed direction from init */
+  struct aes_key_data key_data;
+  memcpy (key_data.write_key, init + 8, 32);
+  memcpy (key_data.write_iv, init + 40, 16);
+  int i;
+  for (i = 0; i < 32; i++) {
+    key_data.read_key[i] = init[55 - i];
+  }
+  for (i = 0; i < 16; i++) {
+    key_data.read_iv[i] = init[23 - i];
+  }
+
+  /* Encrypt all 64 bytes with write key to produce the encrypted init.
+     Only bytes 56-63 get replaced in the sent payload (obfuscated2 protocol). */
+  unsigned char encrypted[64];
+  EVP_CIPHER_CTX *tmp_ctx = EVP_CIPHER_CTX_new ();
+  assert (tmp_ctx);
+  assert (EVP_EncryptInit_ex (tmp_ctx, EVP_aes_256_ctr (), NULL, key_data.write_key, key_data.write_iv));
+  int outlen = 0;
+  assert (EVP_EncryptUpdate (tmp_ctx, encrypted, &outlen, init, 64));
+  assert (outlen == 64);
+
+  /* Replace bytes 56-63 with their encrypted version */
+  memcpy (init + 56, encrypted + 56, 8);
+
+  /* Send the 64-byte init as raw bytes (before crypto layer is active) */
+  assert (rwm_push_data (&c->out, init, 64) == 64);
+
+  /* Now set up the AES-CTR crypto context for ongoing communication.
+     The write counter must start at position 64 (we already "used" 64 bytes
+     for the init). We achieve this by using the temp context's state. */
+  struct aes_crypto *T = NULL;
+  assert (!posix_memalign ((void **)&T, 16, sizeof (struct aes_crypto)));
+  T->write_aeskey = tmp_ctx;   /* counter already at 64 */
+  T->read_aeskey = evp_cipher_ctx_init (EVP_aes_256_ctr (), key_data.read_key, key_data.read_iv, 1);
+  c->crypto = T;
+
+  /* Flush any pending data from client that arrived before DC connected */
+  if (c->extra) {
+    connection_job_t client_conn = (connection_job_t) c->extra;
+    struct connection_info *client_info = CONN_INFO(client_conn);
+    if (client_info->in.total_bytes > 0) {
+      struct raw_message *r = malloc (sizeof (*r));
+      rwm_move (r, &client_info->in);
+      rwm_init (&client_info->in, 0);
+      vkprintf (3, "direct relay %d pending client bytes to DC\n", r->total_bytes);
+      mpq_push_w (c->out_queue, PTR_MOVE(r), 0);
+    }
+  }
+
+  return 0;
+}
+
+/* Route a client connection directly to a Telegram DC.
+   Called after the obfuscated2 handshake is parsed and the target DC is known. */
+static int direct_connect_to_dc (connection_job_t C, int target_dc) {
+  struct connection_info *c = CONN_INFO(C);
+
+  const struct dc_address *dc = direct_dc_lookup (target_dc);
+  if (!dc) {
+    vkprintf (1, "direct mode: unknown DC %d, closing connection\n", target_dc);
+    fail_connection (C, -1);
+    return 0;
+  }
+
+  vkprintf (1, "direct mode: routing client (fd=%d) to DC %d (%s:%d)\n",
+            c->fd, target_dc, inet_ntoa (*(struct in_addr *)&dc->ipv4), dc->port);
+
+  assert (check_conn_functions (&ct_direct_dc, 0) >= 0);
+
+  int cfd = client_socket (dc->ipv4, dc->port, 0);
+  if (cfd < 0) {
+    kprintf ("direct mode: failed to connect to DC %d: %m\n", target_dc);
+    fail_connection (C, -27);
+    return 0;
+  }
+
+  job_incref (C);
+  job_t EJ = alloc_new_connection (cfd, NULL, NULL, ct_outbound, &ct_direct_dc, C,
+                                    ntohl (dc->ipv4), NULL, dc->port);
+
+  if (!EJ) {
+    kprintf ("direct mode: failed to create DC connection\n");
+    job_decref_f (C);
+    fail_connection (C, -37);
+    return 0;
+  }
+
+  /* Store target DC in the DC connection for the connected callback */
+  TCP_RPC_DATA(EJ)->extra_int4 = target_dc;
+
+  /* Switch client to direct relay mode (keeps existing AES crypto) */
+  c->type = &ct_direct_client;
+  c->extra = job_incref (EJ);
+
+  /* Link DC connection back to client */
+  CONN_INFO(EJ)->extra = job_incref (C);
+
+  direct_dc_connections_created++;
+  direct_dc_connections_active++;
+
+  assert (CONN_INFO(EJ)->io_conn);
+  unlock_job (JOB_REF_PASS (EJ));
+
+  return 0;
+}
+
+/*
+ *
+ *      END DIRECT-TO-DC RELAY
+ *
+ */
 
 int tcp_rpcs_default_execute (connection_job_t c, int op, struct raw_message *msg);
 
@@ -1447,6 +1685,9 @@ int tcp_rpcs_compact_parse_execute (connection_job_t C) {
       }
 
       if (ok) {
+        if (direct_mode) {
+          return direct_connect_to_dc (C, D->extra_int4);
+        }
         continue;
       }
 
