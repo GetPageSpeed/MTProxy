@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.22] - 2026-03-25
+
+### Added
+- Fuzz testing for protocol parsers — libFuzzer harnesses with ASan + UBSan for TLS ClientHello/ServerHello and HTTP request parsing. Extracted pure parsing logic into standalone modules (`net/net-tls-parse.{c,h}`, `net/net-http-parse.{c,h}`) so harnesses link without the full engine. CI runs each target for 60 seconds on every push/PR ([#51](https://github.com/GetPageSpeed/MTProxy/issues/51))
+
+## [3.0.21] - 2026-03-25
+
+### Added
+- Direct-to-DC mode (`--direct` / `DIRECT_MODE=true`) — bypass Telegram middle-end relay servers and connect straight to data centers. Eliminates one network hop, removes dependency on `proxy-multi.conf` / `proxy-secret`, and simplifies deployment. Incompatible with `-P` (proxy tag) ([#53](https://github.com/GetPageSpeed/MTProxy/issues/53))
+
+### Fixed
+- Stats port (`-p`) now binds to `0.0.0.0` instead of `127.0.0.1` — Docker port mapping (`-p 8888:8888`) works for accessing stats from the host ([#35](https://github.com/GetPageSpeed/MTProxy/issues/35))
+- Prometheus `/metrics` endpoint no longer prepends non-Prometheus engine stats
+
+## [3.0.20] - 2026-03-24
+
+### Added
+- IP blocklist/allowlist support (`--ip-blocklist`, `--ip-allowlist`) — CIDR-based access control for client connections. Files support IPv4/IPv6 notation with comments, reloaded on `SIGHUP`. Prometheus metric `mtproxy_ip_acl_rejected_total` tracks rejections. Docker support via `IP_BLOCKLIST`/`IP_ALLOWLIST` environment variables ([#46](https://github.com/GetPageSpeed/MTProxy/issues/46))
+- CI: static analysis with cppcheck and CodeQL. Fixed undefined behavior (signed left-shifts), potential memory leak in `parse_option_internal()`, guarded memcpy with NULL checks ([#52](https://github.com/GetPageSpeed/MTProxy/issues/52))
+
 ## [3.0.19] - 2026-03-24
 
 ### Fixed
@@ -25,6 +45,11 @@ All notable changes to this project will be documented in this file.
 - Prometheus-compatible `/metrics` endpoint on the stats port — returns counters and gauges in exposition format for scraping ([#47](https://github.com/GetPageSpeed/MTProxy/issues/47))
 - Docker: support multiple secrets via comma-separated `SECRET` or numbered `SECRET_1`..`SECRET_16` environment variables ([#54](https://github.com/GetPageSpeed/MTProxy/issues/54))
 - Docker: print ready-to-share `https://t.me/proxy` connection links at startup ([#55](https://github.com/GetPageSpeed/MTProxy/issues/55))
+- Docker: switch to Alpine Linux — image size reduced from ~150MB to ~8MB ([#49](https://github.com/GetPageSpeed/MTProxy/issues/49))
+
+### Security
+- Use constant-time comparison (`CRYPTO_memcmp`) for HMAC validation, preventing timing side-channel attacks
+- Tighten timestamp replay window from 10 minutes to 2 minutes (matching telemt)
 
 ## [3.0.16] - 2026-03-24
 

@@ -103,6 +103,27 @@ head -c 16 /dev/urandom | xxd -ps
 
 Also feel free to check out other options using `mtproto-proxy --help`.
 
+### IP Access Control
+
+Restrict client connections by IP address using CIDR-based blocklist/allowlist files:
+
+```bash
+./mtproto-proxy ... --ip-blocklist blocklist.txt --ip-allowlist allowlist.txt
+```
+
+File format (one CIDR range per line, `#` comments allowed):
+```
+# Block known scanner ranges
+185.220.101.0/24
+2001:db8::/32
+```
+
+- Both IPv4 and IPv6 CIDR notation supported
+- `--ip-allowlist`: only matching IPs are accepted (whitelist mode)
+- `--ip-blocklist`: matching IPs are rejected
+- Files are reloaded on `SIGHUP` — update rules without restarting the proxy
+- Rejected connections are tracked via Prometheus metric `mtproxy_ip_acl_rejected_total`
+
 5. Generate the link with following schema: `tg://proxy?server=SERVER_NAME&port=PORT&secret=SECRET` (or let the official bot generate it for you).
 6. Register your proxy with [@MTProxybot](https://t.me/MTProxybot) on Telegram.
 7. Set received tag with arguments: `-P <proxy tag>`
