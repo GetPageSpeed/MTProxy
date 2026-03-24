@@ -37,6 +37,24 @@ jobs:
     - name: Run Multi-Secret Tests
       run: make test-multi-secret
 
+  test-arm64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Build and smoke test (ARM64)
+      run: |
+        export MTPROXY_SECRET=$(head -c 16 /dev/urandom | xxd -ps)
+        echo "Generated MTPROXY_SECRET for ARM64 testing"
+        make test
+
+    - name: Run TLS E2E Tests (ARM64)
+      run: |
+        export MTPROXY_SECRET=$(head -c 16 /dev/urandom | xxd -ps)
+        make test-tls
+
   test-direct:
     runs-on: ubuntu-latest
     steps:

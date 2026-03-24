@@ -328,7 +328,6 @@ docker run -d \
   -p 443:443 \
   -p 8888:8888 \
   --restart unless-stopped \
-  --platform linux/amd64 \
   ghcr.io/getpagespeed/mtproxy:latest
 ```
 
@@ -363,7 +362,6 @@ docker run -d \
   -e PROXY_TAG=your_proxy_tag_here \
   -v mtproxy-data:/opt/mtproxy/data \
   --restart unless-stopped \
-  --platform linux/amd64 \
   ghcr.io/getpagespeed/mtproxy:latest
 ```
 
@@ -407,7 +405,6 @@ The simplest Docker Compose setup (create `docker-compose.yml`):
 services:
   mtproxy:
     image: ghcr.io/getpagespeed/mtproxy:latest
-    platform: linux/amd64
     ports:
       - "443:443"
       - "8888:8888"
@@ -443,7 +440,6 @@ And reference it in your `docker-compose.yml`:
 services:
   mtproxy:
     image: ghcr.io/getpagespeed/mtproxy:latest
-    platform: linux/amd64
     ports:
       - "443:443"
       - "8888:8888"
@@ -464,7 +460,6 @@ docker run -d \
   --name mtproxy \
   -p 443:443 \
   -p 8888:8888 \
-  --platform linux/amd64 \
   mtproxy
 ```
 

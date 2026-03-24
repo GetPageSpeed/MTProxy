@@ -64,17 +64,18 @@ int crc32_repair_bit (unsigned char *input, int l, int k);
 
 /* these functions are exported only for testing purpose */
 unsigned crc32_partial_generic (const void *data, long len, unsigned crc);
-unsigned crc32_partial_clmul (const void *data, long len, unsigned crc);
 uint64_t crc64_partial_one_table (const void *data, long len, uint64_t crc);
-uint64_t crc64_partial_clmul (const void *data, long len, uint64_t crc);
-
 uint64_t crc64_feed_byte (uint64_t crc, unsigned char b);
 
-
 void gf32_compute_powers_generic (unsigned *P, int size, unsigned poly);
-void gf32_compute_powers_clmul (unsigned *P, unsigned poly);
 unsigned gf32_combine_generic (unsigned *powers, unsigned crc1, int64_t len2);
+
+#if defined(__x86_64__) || defined(__i386__)
+unsigned crc32_partial_clmul (const void *data, long len, unsigned crc);
+uint64_t crc64_partial_clmul (const void *data, long len, uint64_t crc);
+void gf32_compute_powers_clmul (unsigned *P, unsigned poly);
 uint64_t gf32_combine_clmul (unsigned *powers, unsigned crc1, int64_t len2);
+#endif
 
 
 #ifdef __cplusplus

@@ -1,5 +1,5 @@
-# Alpine-based multi-stage build (force x86_64 for intrinsics support)
-FROM --platform=linux/amd64 alpine:3.21 AS builder
+# Alpine-based multi-stage build (supports amd64 and arm64)
+FROM alpine:3.21 AS builder
 
 # Install build dependencies
 # linux-headers: provides <linux/futex.h> used by mp-queue.c and jobs.c
@@ -15,8 +15,8 @@ COPY . .
 ARG VERSION=unknown
 RUN make clean && make -j$(nproc) EXTRA_VERSION="${VERSION}"
 
-# Runtime image (must match builder architecture)
-FROM --platform=linux/amd64 alpine:3.21
+# Runtime image
+FROM alpine:3.21
 
 # Install runtime dependencies
 # curl: config downloads + health check

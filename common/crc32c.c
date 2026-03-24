@@ -27,7 +27,9 @@
 #include <math.h>
 #include <assert.h>
 #include <stdint.h>
+#if defined(__x86_64__) || defined(__i386__)
 #include <wmmintrin.h>
+#endif
 
 #include "crc32c.h"
 #include "kprintf.h"
@@ -304,6 +306,7 @@ static unsigned crc32c_table0[256] = {
 #define CRC32C_REFLECTED_X8191 0xcdc220ddll
 #define CRC32C_REFLECTED_X16383 0x1acaec54ll
 
+#if defined(__x86_64__) || defined(__i386__)
 #ifdef __LP64__
 static unsigned crc32c_partial_sse42 (const void *data, long len, unsigned crc) {
   const char *p = data;
@@ -561,6 +564,7 @@ static unsigned crc32c_partial_sse42 (const void *data, long len, unsigned crc) 
   return crc;
 }
 #endif
+#endif /* x86 SSE4.2/PCLMUL */
 
 unsigned crc32c_partial_four_tables (const void *data, long len, unsigned crc) {
   const int *p = (const int *) data;
@@ -615,6 +619,7 @@ static unsigned crc32c_combine_generic (unsigned crc1, unsigned crc2, int64_t le
   return gf32_combine_generic (crc32c_powers, crc1, len2) ^ crc2;
 }
 
+#if defined(__x86_64__) || defined(__i386__)
 static unsigned crc32c_combine_clmul (unsigned crc1, unsigned crc2, int64_t len2) {
   static unsigned int crc32c_powers[252] __attribute__ ((aligned(16)));
   if (len2 <= 0) {
@@ -640,9 +645,11 @@ static unsigned crc32c_combine_clmul (unsigned crc1, unsigned crc2, int64_t len2
   );
   return crc ^ ((unsigned) (T >> 32)) ^ crc2;
 }
+#endif /* x86 PCLMUL */
 
 static void crc32c_init (void) __attribute__ ((constructor));
 void crc32c_init (void) {
+#if defined(__x86_64__) || defined(__i386__)
   kdb_cpuid_t *p = kdb_cpuid ();
   compute_crc32c_combine = &crc32c_combine_generic;
   if (p->ecx & (1 << 20)) {
@@ -656,6 +663,10 @@ void crc32c_init (void) {
   } else {
     crc32c_partial = &crc32c_partial_four_tables;
   }
+#else
+  crc32c_partial = &crc32c_partial_four_tables;
+  compute_crc32c_combine = &crc32c_combine_generic;
+#endif
 }
 
 crc32_partial_func_t crc32c_partial;
