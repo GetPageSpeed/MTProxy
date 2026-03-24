@@ -505,6 +505,36 @@ def test_emulation_matches_backend():
     )
 
 
+def _patch_telethon_faketls():
+    """Patch TelethonFakeTLS to read all encrypted records in ServerHello.
+
+    The upstream library only reads the first encrypted record, but the proxy
+    computes the HMAC over all records. This patch reads all \x17\x03\x03
+    records so the HMAC verification succeeds with multi-record responses.
+    """
+    import TelethonFakeTLS.FakeTLS.TLSInOut as tls_io
+
+    async def _read_server_hello(self):
+        # ServerHello(127) + CCS(6) = 133 bytes
+        buf = bytearray(await self.upstream.readexactly(133))
+        # Read all encrypted application data records
+        while True:
+            try:
+                header = await asyncio.wait_for(
+                    self.upstream.readexactly(5), timeout=0.5
+                )
+            except asyncio.TimeoutError:
+                break
+            buf += header
+            if header[:3] != b"\x17\x03\x03":
+                break
+            rec_len = int.from_bytes(header[3:5], "big")
+            buf += await self.upstream.readexactly(rec_len)
+        return bytes(buf)
+
+    tls_io.FakeTLSStreamReader.read_server_hello = _read_server_hello
+
+
 def test_telethon_connects():
     """Connect to proxy using Telethon — a real MTProto client with fake-TLS.
 
@@ -514,13 +544,14 @@ def test_telethon_connects():
     3. MTProto key exchange completed (Telegram DC is reachable through proxy)
     """
     from telethon import TelegramClient
-    from telethon.network.connection import (
-        ConnectionTcpMTProxyRandomizedIntermediate,
-    )
+    from TelethonFakeTLS import ConnectionTcpMTProxyFakeTLS
+
+    _patch_telethon_faketls()
 
     host = os.environ.get("MTPROXY_HOST", "mtproxy")
     port = int(os.environ.get("MTPROXY_PORT", "8443"))
     secret = os.environ.get("MTPROXY_SECRET", "")
+    ee_domain = os.environ.get("EE_DOMAIN", "172.30.0.10")
 
     assert secret, "MTPROXY_SECRET environment variable not set"
 
@@ -529,8 +560,9 @@ def test_telethon_connects():
             ":memory:",
             api_id=1,
             api_hash="b6b154c3707471f5339bd661645ed3d6",
-            connection=ConnectionTcpMTProxyRandomizedIntermediate,
-            proxy=(host, port, "ee" + secret),
+            connection=ConnectionTcpMTProxyFakeTLS,
+            # TelethonFakeTLS internally prepends "ee" — pass secret+domain only
+            proxy=(host, port, secret + ee_domain.encode().hex()),
         )
         try:
             await asyncio.wait_for(client.connect(), timeout=30)
@@ -552,8 +584,8 @@ def test_telethon_connects():
                 pass
 
     connected = asyncio.run(_connect())
-    assert connected, "Telethon failed to connect through MTProxy"
-    print("  Telethon connected through proxy successfully")
+    assert connected, "Telethon failed to connect through MTProxy with fake-TLS"
+    print("  Telethon connected through proxy via fake-TLS successfully")
 
 
 def test_probe_backend_tls13():

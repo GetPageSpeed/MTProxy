@@ -39,6 +39,8 @@ services:
       - MTPROXY_SECRET=${MTPROXY_SECRET}
       - TLS_BACKEND_HOST=tls-backend
       - TLS_BACKEND_PORT=443
+      # Must match EE_DOMAIN in mtproxy service (used for ee secret in Telethon test)
+      - EE_DOMAIN=172.30.0.10
     networks:
       - tlsnet
     depends_on:

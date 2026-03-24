@@ -30,6 +30,7 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     vim-common \
     cron \
+    iproute2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create user for running the proxy
@@ -119,19 +120,28 @@ EE_DOMAIN=\${EE_DOMAIN:-}
 # Max connections - lower value avoids rlimit issues in containers
 MAX_CONNECTIONS=\${MAX_CONNECTIONS:-60000}
 
-# Detect container-local IPv4 for NAT (used when EXTERNAL_IP is provided).
-LOCAL_IP=\$(grep -vE '(local|ip6|^fd|^\$)' /etc/hosts | awk 'NR==1 {print \$1}')
+# Detect container-local IPv4 for NAT.
+LOCAL_IP=\$(ip -4 route get 8.8.8.8 2>/dev/null | grep -Po 'src \K[\d.]+' || grep -vE '(local|ip6|^fd|^\$)' /etc/hosts | awk 'NR==1 {print \$1}')
 
-# Optional public IPv4 address to advertise to Telegram DCs; pass via -e EXTERNAL_IP=1.2.3.4
+# Public IPv4 address to advertise to Telegram DCs.
+# Auto-detected if not provided — required for Docker NAT to work.
 EXTERNAL_IP=\${EXTERNAL_IP:-}
+if [ -z "\$EXTERNAL_IP" ]; then
+    EXTERNAL_IP=\$(curl -s -4 --connect-timeout 5 --max-time 10 https://icanhazip.com 2>/dev/null || curl -s -4 --connect-timeout 5 --max-time 10 https://ifconfig.me 2>/dev/null || true)
+    if [ -n "\$EXTERNAL_IP" ]; then
+        echo "Auto-detected external IP: \$EXTERNAL_IP"
+    fi
+fi
 
 NAT_INFO_ARGS=""
 if [ -n "\$EXTERNAL_IP" ] && [ -n "\$LOCAL_IP" ]; then
     NAT_INFO_ARGS="--nat-info \$LOCAL_IP:\$EXTERNAL_IP"
+elif [ -z "\$EXTERNAL_IP" ]; then
+    echo "WARNING: Could not detect external IP. Set EXTERNAL_IP env var for Docker NAT support." >&2
 fi
 
 # Build command
-CMD="./mtproto-proxy -p \$STATS_PORT -H \$PORT -S \$SECRET -c \$MAX_CONNECTIONS --http-stats \$NAT_INFO_ARGS"
+CMD="./mtproto-proxy -p \$STATS_PORT -H \$PORT -S \$SECRET -c \$MAX_CONNECTIONS --http-stats --allow-skip-dh \$NAT_INFO_ARGS"
 
 if [ -n "\$PROXY_TAG" ]; then
     CMD="\$CMD -P \$PROXY_TAG"
