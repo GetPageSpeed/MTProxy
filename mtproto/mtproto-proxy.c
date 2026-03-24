@@ -60,6 +60,7 @@
 #include "net/net-crypto-dh.h"
 #include "mtproto-common.h"
 #include "mtproto-config.h"
+#include "mtproto-dc-table.h"
 #include "common/tl-parse.h"
 #include "engine/engine.h"
 #include "engine/engine-net.h"
@@ -117,6 +118,7 @@ static int window_clamp;
 
 #define	PROXY_MODE_OUT	2
 static int proxy_mode;
+int direct_mode;
 
 #define IS_PROXY_IN	0
 #define IS_PROXY_OUT	1
@@ -402,6 +404,7 @@ struct worker_stats {
   long long dropped_queries, dropped_responses;
   long long tot_forwarded_simple_acks, dropped_simple_acks;
   long long mtproto_proxy_errors;
+  long long direct_dc_connections_created, direct_dc_connections_active;
 
   long long connections_failed_lru, connections_failed_flood;
 
@@ -423,6 +426,7 @@ long long tot_forwarded_queries, expired_forwarded_queries, dropped_queries;
 long long tot_forwarded_responses, dropped_responses;
 long long tot_forwarded_simple_acks, dropped_simple_acks;
 long long mtproto_proxy_errors;
+long long direct_dc_connections_created, direct_dc_connections_active;
 
 char proxy_tag[16];
 int proxy_tag_set;
@@ -454,6 +458,8 @@ static void update_local_stats_copy (struct worker_stats *S) {
   UPD (tot_forwarded_simple_acks);
   UPD (dropped_simple_acks);
   UPD (mtproto_proxy_errors);
+  UPD (direct_dc_connections_created);
+  UPD (direct_dc_connections_active);
   UPD (connections_failed_lru);
   UPD (connections_failed_flood);
   UPD (ext_connections); 
@@ -528,6 +534,8 @@ static inline void add_stats (struct worker_stats *W) {
   UPD (tot_forwarded_simple_acks);
   UPD (dropped_simple_acks);
   UPD (mtproto_proxy_errors);
+  UPD (direct_dc_connections_created);
+  UPD (direct_dc_connections_active);
   UPD (connections_failed_lru);
   UPD (connections_failed_flood);
   UPD (ext_connections); 
@@ -653,6 +661,9 @@ void mtfront_prepare_stats (stats_buffer_t *sb) {
 	     "http_qps\t%.6f\n"
 	     "proxy_mode\t%d\n"
 	     "proxy_tag_set\t%d\n"
+	     "direct_mode\t%d\n"
+	     "direct_dc_connections_created\t%lld\n"
+	     "direct_dc_connections_active\t%lld\n"
 	     "version\t" VERSION_STR " compiled at " __DATE__ " " __TIME__ " by gcc " __VERSION__ " "
 #ifdef __LP64__
 	     "64-bit"
@@ -660,10 +671,10 @@ void mtfront_prepare_stats (stats_buffer_t *sb) {
 	     "32-bit"
 #endif
 	     " after commit " COMMIT "\n",
-	     config_filename,
+	     config_filename ? config_filename : "(none)",
 	     CurConf->config_loaded_at,
 	     CurConf->config_bytes,
-	     CurConf->config_md5_hex,
+	     CurConf->config_md5_hex ? CurConf->config_md5_hex : "",
 	     CurConf->auth_stats.tot_clusters,
 	     workers,
 	     S(get_queries),
@@ -719,7 +730,10 @@ void mtfront_prepare_stats (stats_buffer_t *sb) {
 	     S(http_bad_headers),
 	     safe_div (S(http_queries), uptime),
 	     proxy_mode,
-	     proxy_tag_set
+	     proxy_tag_set,
+	     direct_mode,
+	     S(direct_dc_connections_created),
+	     S(direct_dc_connections_active)
   );
 #undef S
 #undef S1
@@ -733,8 +747,6 @@ void mtfront_prepare_prometheus_stats (stats_buffer_t *sb) {
   compute_stats_sum ();
   fetch_connections_stat (&conn);
   fetch_buffers_stat (&bufs);
-
-  sb_prepare (sb);
 
 #define S(x)	((x)+(SumStats.x))
 #define S1(x)	(SumStats.x)
@@ -795,7 +807,10 @@ void mtfront_prepare_prometheus_stats (stats_buffer_t *sb) {
 	     "mtproxy_http_bad_headers_total %lld\n"
 	     "# HELP mtproxy_ip_acl_rejected_total Connections rejected by IP ACL.\n"
 	     "# TYPE mtproxy_ip_acl_rejected_total counter\n"
-	     "mtproxy_ip_acl_rejected_total %lld\n",
+	     "mtproxy_ip_acl_rejected_total %lld\n"
+	     "# HELP mtproxy_direct_dc_connections_created_total Direct DC connections created.\n"
+	     "# TYPE mtproxy_direct_dc_connections_created_total counter\n"
+	     "mtproxy_direct_dc_connections_created_total %lld\n",
 	     S(get_queries),
 	     S(tot_forwarded_queries),
 	     S(expired_forwarded_queries),
@@ -813,7 +828,8 @@ void mtfront_prepare_prometheus_stats (stats_buffer_t *sb) {
 	     S(connections_failed_flood),
 	     S(http_queries),
 	     S(http_bad_headers),
-	     S(conn.accept_ip_acl_rejected)
+	     S(conn.accept_ip_acl_rejected),
+	     S(direct_dc_connections_created)
   );
 
   /* gauges */
@@ -853,7 +869,10 @@ void mtfront_prepare_prometheus_stats (stats_buffer_t *sb) {
 	     "mtproxy_network_buffers_used_bytes %lld\n"
 	     "# HELP mtproxy_network_buffers_allocated_bytes Network buffer memory allocated.\n"
 	     "# TYPE mtproxy_network_buffers_allocated_bytes gauge\n"
-	     "mtproxy_network_buffers_allocated_bytes %lld\n",
+	     "mtproxy_network_buffers_allocated_bytes %lld\n"
+	     "# HELP mtproxy_direct_dc_connections_active Active direct DC connections.\n"
+	     "# TYPE mtproxy_direct_dc_connections_active gauge\n"
+	     "mtproxy_direct_dc_connections_active %lld\n",
 	     uptime,
 	     workers,
 	     S(active_rpcs),
@@ -865,7 +884,8 @@ void mtfront_prepare_prometheus_stats (stats_buffer_t *sb) {
 	     S(conn.active_dh_connections),
 	     SW(conn.ready_targets),
 	     SW(bufs.total_used_buffers_size),
-	     SW(bufs.allocated_buffer_bytes)
+	     SW(bufs.allocated_buffer_bytes),
+	     S(direct_dc_connections_active)
   );
 
 #undef S
@@ -2302,9 +2322,10 @@ void mtfront_sigusr1_handler (void) {
  */
 
 void usage (void) {
-  printf ("usage: %s [-v] [-6] [-p<port>] [-H<http-port>{,<http-port>}] [-M<workers>] [-u<username>] [-b<backlog>] [-c<max-conn>] [-l<log-name>] [-W<window-size>] <config-file>\n", progname);
+  printf ("usage: %s [-v] [-6] [-p<port>] [-H<http-port>{,<http-port>}] [-M<workers>] [-u<username>] [-b<backlog>] [-c<max-conn>] [-l<log-name>] [-W<window-size>] [--direct] <config-file>\n", progname);
   printf ("%s\n", FullVersionStr);
   printf ("\tSimple MT-Proto proxy\n");
+  printf ("\tIn --direct mode, <config-file> is not required.\n");
   parse_usage ();
   exit (2);
 }
@@ -2414,6 +2435,9 @@ int f_parse_option (int val) {
   case 2002:
     ip_acl_set_allowlist_file (optarg);
     break;
+  case 2003:
+    direct_mode = 1;
+    break;
   default:
     return -1;
   }
@@ -2434,9 +2458,21 @@ void mtfront_prepare_parse_options (void) {
   parse_option ("random-padding-only", no_argument, 0, 'R', "allow only clients with random padding option enabled");
   parse_option ("ip-blocklist", required_argument, 0, 2001, "path to file with CIDR ranges to reject");
   parse_option ("ip-allowlist", required_argument, 0, 2002, "path to file with CIDR ranges to exclusively allow");
+  parse_option ("direct", no_argument, 0, 2003, "connect directly to Telegram DCs instead of through ME relays (incompatible with -P)");
 }
 
 void mtfront_parse_extra_args (int argc, char *argv[]) /* {{{ */ {
+  if (direct_mode) {
+    if (argc > 1) {
+      usage ();
+      exit (2);
+    }
+    if (argc == 1) {
+      config_filename = argv[0];
+      vkprintf (0, "config_filename = '%s'\n", config_filename);
+    }
+    return;
+  }
   if (argc != 1) {
     usage ();
     exit (2);
@@ -2447,16 +2483,25 @@ void mtfront_parse_extra_args (int argc, char *argv[]) /* {{{ */ {
 
 // executed BEFORE dropping privileges
 void mtfront_pre_init (void) {
-  init_ct_server_mtfront ();
-
-  int res = do_reload_config (0x26);
-
-  if (res < 0) {
-    fprintf (stderr, "config check failed! (code %d)\n", res);
-    exit (-res);
+  if (direct_mode && proxy_tag_set) {
+    kprintf ("--direct and -P (proxy tag) are mutually exclusive\n");
+    exit (2);
   }
 
-  vkprintf (1, "config loaded!\n");
+  init_ct_server_mtfront ();
+
+  if (!direct_mode) {
+    int res = do_reload_config (0x26);
+
+    if (res < 0) {
+      fprintf (stderr, "config check failed! (code %d)\n", res);
+      exit (-res);
+    }
+
+    vkprintf (1, "config loaded!\n");
+  } else {
+    vkprintf (0, "direct mode: connecting directly to Telegram DCs (no ME relay)\n");
+  }
 
   if (ip_acl_reload () < 0) {
     kprintf ("failed to load IP ACL files\n");
@@ -2514,6 +2559,10 @@ void mtfront_pre_init (void) {
 }
 
 void mtfront_pre_start (void) {
+  if (direct_mode) {
+    return;
+  }
+
   int res = do_reload_config (0x17);
 
   if (res < 0) {

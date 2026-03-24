@@ -108,6 +108,27 @@ Also feel free to check out other options using `mtproto-proxy --help`.
 7. Set received tag with arguments: `-P <proxy tag>`
 8. Enjoy.
 
+### Direct-to-DC Mode
+
+By default, MTProxy routes traffic through Telegram's middle-end (ME) relay servers listed in `proxy-multi.conf`. Direct mode bypasses the ME relays and connects straight to Telegram data centers, reducing latency and simplifying deployment:
+
+```
+Default:  Client → MTProxy → ME relay (proxy-multi.conf) → Telegram DC
+Direct:   Client → MTProxy → Telegram DC
+```
+
+To enable direct mode, use `--direct`:
+
+```bash
+./mtproto-proxy -u nobody -p 8888 -H 443 -S <secret> --http-stats --direct
+```
+
+In direct mode:
+- No `proxy-multi.conf` or `proxy-secret` files are needed
+- No config file argument is required
+- The proxy connects directly to well-known Telegram DC addresses
+- **Incompatible with `-P` (proxy tag)** — promoted channels require ME relays
+
 ## Using IPv6
 
 MTProxy supports IPv6. To enable it, pass the `-6` flag and specify only port numbers to `-H` (do not include an address like `[::]:443`).
@@ -377,6 +398,7 @@ docker run -d \
 - `STATS_PORT`: Port for statistics endpoint (default: 8888)
 - `WORKERS`: Number of worker processes (default: 1)
 - `PROXY_TAG`: Proxy tag from [@MTProxybot](https://t.me/MTProxybot) (optional, for channel promotion)
+- `DIRECT_MODE`: Connect directly to Telegram DCs instead of through ME relays (true/false, default: false). Incompatible with `PROXY_TAG`. See [Direct-to-DC Mode](#direct-to-dc-mode)
 - `RANDOM_PADDING`: Enable random padding only mode (true/false, default: false)
 - `EXTERNAL_IP`: Your public IP address for NAT environments (optional)
 - `EE_DOMAIN`: Domain for EE Mode (Fake-TLS + Padding), e.g. `www.google.com`. Accepts `host:port` for custom TLS backends (e.g., `mywebsite.com:8443`). See [Custom TLS Backend](#ee-mode-with-custom-tls-backend-tcp-splitting)

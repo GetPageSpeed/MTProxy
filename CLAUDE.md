@@ -26,7 +26,14 @@ The proxy **must** pass `--nat-info LOCAL_IP:EXTERNAL_IP` to work behind Docker 
 ### Building
 Cannot build natively on macOS (needs Linux OpenSSL). Use `docker build --target builder` to verify compilation. The Docker image supports both `linux/amd64` and `linux/arm64` — on Apple Silicon Macs, `docker build` produces a native ARM64 binary.
 
+### Direct-to-DC Mode
+When `--direct` is passed (or `DIRECT_MODE=true` in Docker), the proxy connects straight to Telegram DCs instead of through ME relays. The code path branches in `net/net-tcp-rpc-ext-server.c` after the 64-byte obfuscated2 handshake: `direct_connect_to_dc()` opens a new obfuscated2 connection to the DC and sets up a bidirectional byte-level relay via `ct_direct_client`/`ct_direct_dc` connection types. No RPC proxy protocol is involved — raw MTProto bytes are piped through with double AES-CTR encryption (client↔proxy, proxy↔DC).
+
+- DC addresses are hardcoded in `mtproto/mtproto-dc-table.c`
+- Incompatible with `-P` (proxy tag) — ad tags require ME relays
+- `proxy-multi.conf` and `proxy-secret` are not needed in direct mode
+
 ## Common Pitfalls
 - **Do not use `--no-verify` or force-push to master** without explicit approval
 - The `proxy-secret` (aes-pwd) file is baked into the Docker image at build time — not fetched at runtime
-- `proxy-multi.conf` is refreshed every 6 hours via cron inside the container
+- `proxy-multi.conf` is refreshed every 6 hours via cron inside the container (not in direct mode)
