@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: "Sponsor this project"
+    url: "https://github.com/sponsors/dvershinin"
+    about: "MTProxy is maintained in my free time. Sponsoring helps keep it alive and gets your issues prioritized."
+  - name: "GetPageSpeed RPM packages (commercial support)"
+    url: "https://www.getpagespeed.com/server-setup/mtproxy"
+    about: "One-command install with automatic updates, systemd setup, and support included."

@@ -1,0 +1,25 @@
+name: Close Stale Issues
+
+on:
+  schedule:
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          stale-message: |
+            This issue has been inactive for 60 days and will be closed in 14 days unless there is new activity.
+
+            If this is important to you, consider [sponsoring the project](https://github.com/sponsors/dvershinin) to help prioritize it.
+          close-message: "Closed due to inactivity. Reopen if still relevant."
+          days-before-stale: 60
+          days-before-close: 14
+          exempt-issue-labels: 'sponsored,pinned'
+          stale-issue-label: 'stale'

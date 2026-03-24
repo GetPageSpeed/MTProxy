@@ -5,12 +5,18 @@ Simple MT-Proto proxy.
 **This is a fork of MTProxy which includes various improvements and fixes that upstream has not merged due to abandonding their repository.
 Most of these fixes aim for stable running of MTProxy in production without surprises.**
 
-> [!TIP]
-> Chỉ cần copy và paste đoạn này vào “Saved Messages” của bạn, gửi cho chính bạn, và click vào link trong Telegram để thiết lập proxy:
-
-```
-tg://proxy?server=mtproxy.getpagespeed.com&port=8444&secret=d7f04aa6631130af1a153e7a5e12c291
-```
+> [!IMPORTANT]
+> **Maintenance notice**: This project is maintained by a [single developer](https://github.com/dvershinin) in their free time.
+> Upstream [TelegramMessenger/MTProxy](https://github.com/TelegramMessenger/MTProxy) has been abandoned.
+> Continued development and bug fixes depend on community support.
+>
+> | Channel | Details |
+> |---------|---------|
+> | GitHub Sponsors | **[Sponsor](https://github.com/sponsors/dvershinin)** |
+> | TON | `UQBOGq_b3eL63Qfkj6ykoBibK3zGJDQzLK91v2q-UCY7BPeb` (via @wallet in Telegram) |
+> | USDT (TRC-20) | `TNVSj1QjZ5jqdaeshe7VCpXWo2S1n936Hj` |
+> | BTC | `bc1qvxxldmanwggula7992uun5a2qxm65ej9h0unj7` |
+> | Commercial | **[GetPageSpeed RPM packages](https://www.getpagespeed.com/server-setup/mtproxy)** (includes support) |
 
 ## Install
 
