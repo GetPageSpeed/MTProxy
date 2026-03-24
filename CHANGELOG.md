@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.19] - 2026-03-24
+
+### Fixed
+- Reduce idle CPU usage from 1-2% to 0% — the precise cron job (1ms interval) now stops when no clients are connected and resumes instantly on first accept. In multi-worker mode, the master process is unaffected (always monitors children) ([#34](https://github.com/GetPageSpeed/MTProxy/issues/34))
+- E2E tests: provide a default test secret so all TLS handshake tests pass without requiring `MTPROXY_SECRET` env var
+
 ## [3.0.18] - 2026-03-24
 
 ### Added

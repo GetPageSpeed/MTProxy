@@ -2281,6 +2281,13 @@ void precise_cron (void) {
   update_local_stats ();
 }
 
+static int mtfront_has_active_connections (void) {
+  if (workers > 0 && !slave_mode) {
+    return 1;
+  }
+  return active_special_connections > 0;
+}
+
 void mtfront_sigusr1_handler (void) {
   reopen_logs_ext (slave_mode);
   if (workers) {
@@ -2536,6 +2543,7 @@ server_functions_t mtproto_front_functions = {
   .default_modules_disabled = 0,
   .cron = cron,
   .precise_cron = precise_cron,
+  .has_active_connections = mtfront_has_active_connections,
   .pre_init = mtfront_pre_init,
   .pre_start = mtfront_pre_start,
   .pre_loop = mtfront_pre_loop,
