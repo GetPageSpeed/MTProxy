@@ -477,8 +477,6 @@ def test_emulation_matches_backend():
             if not chunk:
                 break
             data += chunk
-            if len(data) >= 138:
-                break
         except socket.timeout:
             break
     sock.close()
@@ -491,8 +489,6 @@ def test_emulation_matches_backend():
         f"backend={backend['is_reversed_extension_order']}"
     )
 
-    # Document the multi-record discrepancy (issue #42):
-    # Proxy emits 1 record, backend may emit multiple
     print(
         f"  Emulation comparison:"
         f"\n    Backend: records={backend['encrypted_record_count']}, "
@@ -502,11 +498,11 @@ def test_emulation_matches_backend():
         f"\n    Extension order match: YES"
     )
 
-    if proxy["encrypted_record_count"] < backend["encrypted_record_count"]:
-        print(
-            f"    NOTE: Proxy emits {proxy['encrypted_record_count']} encrypted record(s) "
-            f"vs backend's {backend['encrypted_record_count']} — this is issue #42"
-        )
+    # Encrypted record count MUST match the real backend
+    assert proxy["encrypted_record_count"] == backend["encrypted_record_count"], (
+        f"Encrypted record count mismatch: proxy={proxy['encrypted_record_count']}, "
+        f"backend={backend['encrypted_record_count']}"
+    )
 
 
 def test_telethon_connects():
