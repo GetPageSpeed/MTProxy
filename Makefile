@@ -47,7 +47,7 @@ DEPDIRS := ${DEP} $(addprefix ${DEP}/,${PROJECTS})
 ALLDIRS := ${DEPDIRS} ${OBJDIRS}
 
 
-.PHONY:	all clean tests test test-tls docker-image-amd64 docker-run-help-amd64
+.PHONY:	all clean tests test test-tls test-multi-secret docker-image-amd64 docker-run-help-amd64
 
 EXELIST	:= ${EXE}/mtproto-proxy
 
@@ -158,4 +158,17 @@ test-tls:
 		docker compose -f tests/docker-compose.tls-test.yml logs mtproxy; \
 		docker compose -f tests/docker-compose.tls-test.yml down; exit 1)
 	docker compose -f tests/docker-compose.tls-test.yml down
+
+test-multi-secret:
+	@export MTPROXY_SECRET_1=$$(head -c 16 /dev/urandom | xxd -ps) && \
+	export MTPROXY_SECRET_2=$$(head -c 16 /dev/urandom | xxd -ps) && \
+	echo "Using secrets: $$MTPROXY_SECRET_1, $$MTPROXY_SECRET_2" && \
+	timeout 300s docker compose -f tests/docker-compose.multi-secret-test.yml up --build --exit-code-from tester || \
+		(echo "Multi-secret test timed out or failed"; \
+		docker compose -f tests/docker-compose.multi-secret-test.yml logs mtproxy; \
+		docker compose -f tests/docker-compose.multi-secret-test.yml down; exit 1)
+	@echo "Checking connection link output in proxy logs..."
+	@docker compose -f tests/docker-compose.multi-secret-test.yml logs mtproxy 2>&1 | grep -q "t.me/proxy" || \
+		(echo "FAIL: No connection links found in proxy logs"; exit 1)
+	docker compose -f tests/docker-compose.multi-secret-test.yml down
 

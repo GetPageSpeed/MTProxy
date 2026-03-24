@@ -337,14 +337,18 @@ The container automatically:
 - Generates a random secret if none is provided
 - Starts the proxy on port 443
 
-**Finding Your Auto-Generated Secret:**
+**Connection Links at Startup:**
+
+The container prints ready-to-share connection links in the logs:
 
 ```bash
-docker logs mtproxy 2>&1 | grep "Generated secret"
-# Output: Generated secret: abc123def456...
+docker logs mtproxy
+# ===== Connection Links =====
+# https://t.me/proxy?server=203.0.113.1&port=443&secret=eecafe...
+# =============================
 ```
 
-Use this secret to configure your Telegram client.
+If external IP detection fails, links show `<YOUR_SERVER_IP>` — set `EXTERNAL_IP` to fix.
 
 ### Using Pre-built Docker Image (Advanced)
 
@@ -365,10 +369,12 @@ docker run -d \
 
 #### Environment Variables
 
-- `SECRET`: User secret for proxy connections (auto-generated if not provided)
-  - **For DD mode**: Use `dd` + 32 hex digits (e.g., `ddcafe1234567890abcdef1234567890`)
-  - **For EE mode**: Use `ee` + 32 hex digits + domain hex (e.g., `eecafe1234567890abcdef1234567890ab7777772e676f6f676c652e636f6d`)
-  - **Standard mode**: Just 32 hex digits without prefix
+- `SECRET`: Proxy secret(s) — 32 hex characters each (auto-generated if not provided)
+  - Single: `SECRET=cafe1234567890abcdef1234567890ab`
+  - Multiple (comma-separated): `SECRET=secret1,secret2,secret3`
+  - Multiple (numbered): `SECRET_1=aabb...`, `SECRET_2=ccdd...` (up to `SECRET_16`)
+  - If both `SECRET` and `SECRET_N` are set, all are combined
+  - Maximum 16 secrets (binary limit)
 - `PORT`: Port for client connections (default: 443)
 - `STATS_PORT`: Port for statistics endpoint (default: 8888)
 - `WORKERS`: Number of worker processes (default: 1)
@@ -409,6 +415,17 @@ For custom configuration, create a `.env` file:
 SECRET=your_secret_here
 PROXY_TAG=your_proxy_tag_here
 RANDOM_PADDING=false
+```
+
+For multiple secrets (per-group access control):
+```bash
+# Option A: comma-separated
+SECRET=family_secret_hex,friends_secret_hex,public_secret_hex
+
+# Option B: numbered variables
+SECRET_1=family_secret_hex
+SECRET_2=friends_secret_hex
+SECRET_3=public_secret_hex
 ```
 
 And reference it in your `docker-compose.yml`:
