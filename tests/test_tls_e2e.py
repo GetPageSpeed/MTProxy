@@ -317,7 +317,12 @@ def _do_handshake(host, port, secret_bytes, domain=None, timestamp_offset=0):
         embedded in the ClientHello.
     """
     if domain is None:
-        domain = os.environ.get("EE_DOMAIN", "172.30.0.10")
+        # EE_DOMAIN matches the proxy's -D setting; fall back to TLS_BACKEND_HOST
+        # for the direct CI environment where EE_DOMAIN is not set but
+        # TLS_BACKEND_HOST equals the proxy's -D domain (e.g. ya.ru).
+        domain = os.environ.get(
+            "EE_DOMAIN", os.environ.get("TLS_BACKEND_HOST", "172.30.0.10")
+        )
     hello = build_client_hello(domain)
 
     hello_zeroed = bytearray(hello)
