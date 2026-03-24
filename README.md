@@ -18,6 +18,49 @@ Most of these fixes aim for stable running of MTProxy in production without surp
 > | BTC | `bc1qvxxldmanwggula7992uun5a2qxm65ej9h0unj7` |
 > | Commercial | **[GetPageSpeed RPM packages](https://www.getpagespeed.com/server-setup/mtproxy)** (includes support) |
 
+## How This Fork Compares
+
+This is the actively maintained fork of [TelegramMessenger/MTProxy](https://github.com/TelegramMessenger/MTProxy) (upstream abandoned).
+The table below compares it with the original and the two main third-party alternatives.
+
+| Feature | [Original](https://github.com/TelegramMessenger/MTProxy) | **This fork** | [mtg](https://github.com/9seconds/mtg) | [telemt](https://github.com/telemt/telemt) |
+|---------|:---:|:---:|:---:|:---:|
+| **Language** | C | C | Go | Rust |
+| ***Protocol*** | | | | |
+| Fake-TLS (EE mode) | Yes | Yes | Yes | Yes |
+| Direct-to-DC mode | No | Yes | Yes | Yes |
+| Ad proxy tag | Yes | Yes | No | Yes |
+| Multiple secrets | Yes | Yes (up to 16) | No | Yes |
+| Anti-replay protection | Weak | Yes | Yes | Partial |
+| Constant-time HMAC | No | Yes | — | Yes |
+| ***Censorship resistance*** | | | | |
+| Custom TLS backend (TCP splitting) | Yes | Yes | No | Yes |
+| Domain fronting / traffic mimicry | No | No | Yes | Yes |
+| SOCKS5 upstream proxy | No | No | Yes | Yes |
+| ***Access control*** | | | | |
+| IP blocklist / allowlist | No | Yes | Yes | No |
+| Per-user unique IP limits | No | No | No | Yes |
+| Proxy Protocol v1/v2 | No | No | Yes | Yes |
+| ***Deployment*** | | | | |
+| Docker image | No | ~8 MB | ~3.5 MB | ~5 MB |
+| ARM64 / Apple Silicon | No | Yes | Yes | Yes |
+| IPv6 | Yes | Yes | Yes | Yes |
+| Multi-worker processes | Yes | Yes | — | — |
+| RPM packages | No | Yes | No | No |
+| Systemd integration | Partial | Yes | — | Yes |
+| ***Monitoring & management*** | | | | |
+| Prometheus metrics | No | Yes | Yes | Yes |
+| HTTP stats endpoint | Yes | Yes | — | Yes |
+| REST management API | No | No | No | Yes |
+| Auto config refresh | No | Yes | Yes | Yes |
+| Health checks | No | Yes | Yes | Yes |
+| ***Testing & quality*** | | | | |
+| Fuzz testing (CI) | No | Yes | Yes | Partial |
+| E2E tests (real Telegram clients) | No | Yes | No | No |
+| Static analysis (CI) | No | Yes | — | — |
+
+> **Why this fork?** Battle-tested C codebase from the official Telegram repository, with TDLib-validated fake-TLS (verified against the [TDLib source](https://github.com/tdlib/td/blob/master/td/mtproto/TlsInit.cpp)), RPM packaging for enterprise deployment, and the most comprehensive CI pipeline (libFuzzer + Telethon E2E + cppcheck + CodeQL).
+
 ## Install
 
 ### Quick Install (Recommended)

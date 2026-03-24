@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.1.0] - 2026-03-25
+
+Consolidates changes from v3.0.17 through v3.0.22.
+
+### Added
+- Direct-to-DC mode (`--direct` / `DIRECT_MODE`) — bypass ME relays, connect straight to Telegram DCs
+- Prometheus-compatible `/metrics` endpoint
+- ARM64 (aarch64) Docker images and native CI
+- IP blocklist/allowlist (`--ip-blocklist`, `--ip-allowlist`) with SIGHUP reload
+- Docker: Alpine base (~8 MB), multiple secrets, startup connection links
+- Fuzz testing (libFuzzer + ASan/UBSan) for TLS and HTTP parsers
+- E2E tests for anti-detection fallback scenarios
+- Static analysis: cppcheck and CodeQL in CI
+
+### Fixed
+- Idle CPU usage reduced to 0% when no clients connected
+- Stats port binds to `0.0.0.0` (Docker port mapping works)
+- Clean Prometheus output (no engine stats prefix)
+
+### Security
+- Constant-time HMAC comparison (prevents timing side-channel)
+- Replay window tightened from 10 min to 2 min
+
 ## [3.0.22] - 2026-03-25
 
 ### Added
