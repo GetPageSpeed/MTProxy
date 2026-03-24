@@ -1,0 +1,2 @@
+# Block the tester container's IP
+172.31.0.3/32

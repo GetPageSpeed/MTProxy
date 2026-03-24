@@ -26,6 +26,10 @@ services:
       - RANDOM_PADDING=${RANDOM_PADDING:-false}
       # Domain for Fake-TLS + Padding
       - EE_DOMAIN=${EE_DOMAIN:-}
+      # Path (inside container) to CIDR blocklist file
+      - IP_BLOCKLIST=${IP_BLOCKLIST:-}
+      # Path (inside container) to CIDR allowlist file
+      - IP_ALLOWLIST=${IP_ALLOWLIST:-}
     volumes:
       # Persist config files
       - ./data:/opt/mtproxy/data

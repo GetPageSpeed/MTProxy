@@ -1,0 +1,52 @@
+services:
+  mtproxy:
+    platform: linux/amd64
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      - SECRET=${MTPROXY_SECRET}
+      - PORT=8443
+      - STATS_PORT=8888
+      - WORKERS=0
+      - IP_BLOCKLIST=/opt/mtproxy/blocklist.txt
+    volumes:
+      - ./ip-acl-blocklist.txt:/opt/mtproxy/blocklist.txt:ro
+    networks:
+      aclnet:
+        ipv4_address: 172.31.0.2
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8888/stats"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+      start_period: 5s
+
+  # Blocked IP: verify connections are rejected
+  blocked-tester:
+    build: .
+    environment:
+      - MTPROXY_HOST=172.31.0.2
+      - MTPROXY_PORT=8443
+    networks:
+      aclnet:
+        ipv4_address: 172.31.0.3
+    command: ["python", "test_ip_acl.py", "blocked"]
+
+  # Non-blocked IP: verify connections succeed
+  tester:
+    build: .
+    environment:
+      - MTPROXY_HOST=172.31.0.2
+      - MTPROXY_PORT=8443
+    networks:
+      aclnet:
+        ipv4_address: 172.31.0.4
+    command: ["python", "test_ip_acl.py", "allowed"]
+
+networks:
+  aclnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24

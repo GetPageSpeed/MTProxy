@@ -55,6 +55,7 @@
 #include "server-functions.h"
 #include "net/net-connections.h"
 #include "net/net-config.h"
+#include "net/net-ip-acl.h"
 #include "vv/vv-io.h"
 #include "vv/vv-tree.h"
 #include "pid.h"
@@ -104,7 +105,7 @@ long long netw_queries, netw_update_queries, total_failed_connections, total_con
 int allocated_targets, active_targets, inactive_targets, free_targets;
 int allocated_connections, allocated_socket_connections;
 long long accept_calls_failed, accept_nonblock_set_failed, accept_connection_limit_failed,
-          accept_rate_limit_failed, accept_init_accepted_failed;
+          accept_rate_limit_failed, accept_init_accepted_failed, accept_ip_acl_rejected;
 
 long long tcp_readv_calls, tcp_writev_calls, tcp_readv_intr, tcp_writev_intr;
 long long tcp_readv_bytes, tcp_writev_bytes;
@@ -169,6 +170,7 @@ MODULE_STAT_FUNCTION
   SB_SUM_ONE_LL (accept_connection_limit_failed);
   SB_SUM_ONE_LL (accept_rate_limit_failed);
   SB_SUM_ONE_LL (accept_init_accepted_failed);
+  SB_SUM_ONE_LL (accept_ip_acl_rejected);
 MODULE_STAT_FUNCTION_END
 
 void fetch_connections_stat (struct connections_stat *st) {
@@ -200,6 +202,7 @@ void fetch_connections_stat (struct connections_stat *st) {
   COLLECT_LL (accept_rate_limit_failed);
   COLLECT_LL (accept_init_accepted_failed);
   COLLECT_LL (accept_connection_limit_failed);
+  COLLECT_LL (accept_ip_acl_rejected);
 #undef COLLECT_I
 #undef COLLECT_LL
 }
@@ -1265,7 +1268,25 @@ int net_accept_new_connections (listening_connection_job_t LCJ) /* {{{ */ {
 
       cur_accept_rate_remaining -= 1;
     }
-     
+
+    {
+      int acl_ok;
+      if (peer.a4.sin_family == AF_INET) {
+        acl_ok = ip_acl_check_v4 (ntohl (peer.a4.sin_addr.s_addr));
+      } else {
+        acl_ok = ip_acl_check_v6 (peer.a6.sin6_addr.s6_addr);
+      }
+      if (!acl_ok) {
+        MODULE_STAT->accept_ip_acl_rejected ++;
+        vkprintf (1, "connection from %s rejected by IP ACL\n",
+          peer.a4.sin_family == AF_INET
+            ? show_ip (ntohl (peer.a4.sin_addr.s_addr))
+            : show_ipv6 (peer.a6.sin6_addr.s6_addr));
+        close (cfd);
+        continue;
+      }
+    }
+
     if (LC->flags & C_IPV6) {
       assert (peer_addrlen == sizeof (struct sockaddr_in6));
       assert (peer.a6.sin6_family == AF_INET6);

@@ -63,6 +63,7 @@
 #include "common/tl-parse.h"
 #include "engine/engine.h"
 #include "engine/engine-net.h"
+#include "net/net-ip-acl.h"
 
 #ifndef COMMIT
 #define COMMIT "unknown"
@@ -496,6 +497,7 @@ static inline void add_stats (struct worker_stats *W) {
   UPD (conn.accept_nonblock_set_failed);
   UPD (conn.accept_rate_limit_failed);
   UPD (conn.accept_init_accepted_failed);
+  UPD (conn.accept_ip_acl_rejected);
 
   UPD (allocated_aes_crypto); 
   UPD (allocated_aes_crypto_temp); 
@@ -632,6 +634,7 @@ void mtfront_prepare_stats (stats_buffer_t *sb) {
 	     "total_special_connections\t%d\n"
 	     "total_max_special_connections\t%d\n"
 	     "total_accept_connections_failed\t%lld %lld %lld %lld %lld\n"
+	     "accept_ip_acl_rejected\t%lld\n"
 	     "ext_connections\t%lld\n"
 	     "ext_connections_created\t%lld\n"
 	     "total_active_network_events\t%d\n"
@@ -698,6 +701,7 @@ void mtfront_prepare_stats (stats_buffer_t *sb) {
 	     S(conn.accept_connection_limit_failed),
 	     S(conn.accept_rate_limit_failed),
 	     S(conn.accept_nonblock_set_failed),
+	     S(conn.accept_ip_acl_rejected),
 	     S(ext_connections),
 	     S(ext_connections_created),
 	     S(ev_heap_size),
@@ -788,7 +792,10 @@ void mtfront_prepare_prometheus_stats (stats_buffer_t *sb) {
 	     "mtproxy_http_queries_total %lld\n"
 	     "# HELP mtproxy_http_bad_headers_total HTTP requests with malformed headers.\n"
 	     "# TYPE mtproxy_http_bad_headers_total counter\n"
-	     "mtproxy_http_bad_headers_total %lld\n",
+	     "mtproxy_http_bad_headers_total %lld\n"
+	     "# HELP mtproxy_ip_acl_rejected_total Connections rejected by IP ACL.\n"
+	     "# TYPE mtproxy_ip_acl_rejected_total counter\n"
+	     "mtproxy_ip_acl_rejected_total %lld\n",
 	     S(get_queries),
 	     S(tot_forwarded_queries),
 	     S(expired_forwarded_queries),
@@ -805,7 +812,8 @@ void mtfront_prepare_prometheus_stats (stats_buffer_t *sb) {
 	     S(connections_failed_lru),
 	     S(connections_failed_flood),
 	     S(http_queries),
-	     S(http_bad_headers)
+	     S(http_bad_headers),
+	     S(conn.accept_ip_acl_rejected)
   );
 
   /* gauges */
@@ -2393,6 +2401,12 @@ int f_parse_option (int val) {
   case 'R':
     tcp_rpcs_set_ext_rand_pad_only(1);
     break;
+  case 2001:
+    ip_acl_set_blocklist_file (optarg);
+    break;
+  case 2002:
+    ip_acl_set_allowlist_file (optarg);
+    break;
   default:
     return -1;
   }
@@ -2411,6 +2425,8 @@ void mtfront_prepare_parse_options (void) {
   parse_option ("slaves", required_argument, 0, 'M', "spawn several slave workers; not recommended for TLS-transport mode for better replay protection");
   parse_option ("ping-interval", required_argument, 0, 'T', "sets ping interval in second for local TCP connections (default %.3lf)", PING_INTERVAL);
   parse_option ("random-padding-only", no_argument, 0, 'R', "allow only clients with random padding option enabled");
+  parse_option ("ip-blocklist", required_argument, 0, 2001, "path to file with CIDR ranges to reject");
+  parse_option ("ip-allowlist", required_argument, 0, 2002, "path to file with CIDR ranges to exclusively allow");
 }
 
 void mtfront_parse_extra_args (int argc, char *argv[]) /* {{{ */ {
@@ -2434,6 +2450,11 @@ void mtfront_pre_init (void) {
   }
 
   vkprintf (1, "config loaded!\n");
+
+  if (ip_acl_reload () < 0) {
+    kprintf ("failed to load IP ACL files\n");
+    exit (1);
+  }
 
   if (domain_count) {
     tcp_rpc_init_proxy_domains();
