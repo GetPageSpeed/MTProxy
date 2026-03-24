@@ -102,12 +102,39 @@ if [ "\$NEEDS_DOWNLOAD" -eq 1 ]; then
     fi
 fi
 
-# Generate secret if not provided
-if [ -z "\$SECRET" ]; then
-    echo "No SECRET provided, generating one..."
-    export SECRET=\$(head -c 16 /dev/urandom | xxd -ps)
-    echo "Generated secret: \$SECRET"
+# Collect secrets from comma-separated SECRET and/or numbered SECRET_N vars
+SECRETS=()
+
+if [ -n "\$SECRET" ]; then
+    IFS=',' read -ra _parts <<< "\$SECRET"
+    for _s in "\${_parts[@]}"; do
+        _s=\$(echo "\$_s" | tr -d '[:space:]')
+        [ -n "\$_s" ] && SECRETS+=("\$_s")
+    done
 fi
+
+for _i in \$(seq 1 16); do
+    _var="SECRET_\${_i}"
+    _val="\${!_var}"
+    if [ -n "\$_val" ]; then
+        _val=\$(echo "\$_val" | tr -d '[:space:]')
+        SECRETS+=("\$_val")
+    fi
+done
+
+if [ \${#SECRETS[@]} -eq 0 ]; then
+    echo "No SECRET provided, generating one..."
+    _gen=\$(head -c 16 /dev/urandom | xxd -ps)
+    SECRETS+=("\$_gen")
+    echo "Generated secret: \$_gen"
+fi
+
+if [ \${#SECRETS[@]} -gt 16 ]; then
+    echo "ERROR: Maximum 16 secrets supported, got \${#SECRETS[@]}" >&2
+    exit 1
+fi
+
+echo "Configured \${#SECRETS[@]} secret(s)"
 
 # Set default values
 PORT=\${PORT:-443}
@@ -141,7 +168,12 @@ elif [ -z "\$EXTERNAL_IP" ]; then
 fi
 
 # Build command
-CMD="./mtproto-proxy -p \$STATS_PORT -H \$PORT -S \$SECRET -c \$MAX_CONNECTIONS --http-stats --allow-skip-dh \$NAT_INFO_ARGS"
+SECRET_ARGS=""
+for _s in "\${SECRETS[@]}"; do
+    SECRET_ARGS="\$SECRET_ARGS -S \$_s"
+done
+
+CMD="./mtproto-proxy -p \$STATS_PORT -H \$PORT\$SECRET_ARGS -c \$MAX_CONNECTIONS --http-stats --allow-skip-dh \$NAT_INFO_ARGS"
 
 if [ -n "\$PROXY_TAG" ]; then
     CMD="\$CMD -P \$PROXY_TAG"
@@ -158,6 +190,28 @@ fi
 CMD="\$CMD --aes-pwd proxy-secret data/proxy-multi.conf -M \$WORKERS -u mtproxy \$@"
 
 echo "Starting MTProxy with command: \$CMD"
+
+# Print ready-to-share connection links
+echo ""
+echo "===== Connection Links ====="
+_host="\${EXTERNAL_IP:-<YOUR_SERVER_IP>}"
+for _s in "\${SECRETS[@]}"; do
+    if [ -n "\$EE_DOMAIN" ]; then
+        _domain_only=\$(echo "\$EE_DOMAIN" | cut -d: -f1)
+        _domain_hex=\$(printf '%s' "\$_domain_only" | xxd -ps | tr -d '\n')
+        _full="ee\${_s}\${_domain_hex}"
+    elif [ "\$RANDOM_PADDING" = "true" ]; then
+        _full="dd\${_s}"
+    else
+        _full="\$_s"
+    fi
+    echo "https://t.me/proxy?server=\${_host}&port=\${PORT}&secret=\${_full}"
+done
+if [ "\$_host" = "<YOUR_SERVER_IP>" ]; then
+    echo "(Set EXTERNAL_IP to show your server's IP)"
+fi
+echo "============================="
+echo ""
 
 # Start cron daemon for daily config refresh
 cron

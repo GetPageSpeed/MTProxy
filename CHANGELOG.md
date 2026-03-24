@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.17] - 2026-03-24
+
+### Added
+- Docker: support multiple secrets via comma-separated `SECRET` or numbered `SECRET_1`..`SECRET_16` environment variables ([#54](https://github.com/GetPageSpeed/MTProxy/issues/54))
+- Docker: print ready-to-share `https://t.me/proxy` connection links at startup ([#55](https://github.com/GetPageSpeed/MTProxy/issues/55))
+
 ## [3.0.16] - 2026-03-24
 
 ### Fixed

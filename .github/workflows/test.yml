@@ -34,6 +34,9 @@ jobs:
         fi
         make test-tls
 
+    - name: Run Multi-Secret Tests
+      run: make test-multi-secret
+
   test-direct:
     runs-on: ubuntu-latest
     steps:
