@@ -389,6 +389,14 @@ docker run -d \
 curl http://localhost:8888/stats
 ```
 
+#### Prometheus Metrics
+
+```bash
+curl http://localhost:8888/metrics
+```
+
+Returns metrics in [Prometheus exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/), ready for scraping. Available on the same `--http-stats` port, restricted to private networks.
+
 ### Using Docker Compose
 
 The simplest Docker Compose setup (create `docker-compose.yml`):

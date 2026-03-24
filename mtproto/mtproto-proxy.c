@@ -722,6 +722,149 @@ void mtfront_prepare_stats (stats_buffer_t *sb) {
 #undef SW
 }
 
+void mtfront_prepare_prometheus_stats (stats_buffer_t *sb) {
+  struct connections_stat conn;
+  struct buffers_stat bufs;
+  int uptime = now - start_time;
+  compute_stats_sum ();
+  fetch_connections_stat (&conn);
+  fetch_buffers_stat (&bufs);
+
+  sb_prepare (sb);
+
+#define S(x)	((x)+(SumStats.x))
+#define S1(x)	(SumStats.x)
+#define SW(x)	(workers ? S1(x) : S(x))
+
+  /* counters */
+  sb_printf (sb,
+	     "# HELP mtproxy_queries_total Total client queries received.\n"
+	     "# TYPE mtproxy_queries_total counter\n"
+	     "mtproxy_queries_total %lld\n"
+	     "# HELP mtproxy_forwarded_queries_total Total queries forwarded to Telegram DCs.\n"
+	     "# TYPE mtproxy_forwarded_queries_total counter\n"
+	     "mtproxy_forwarded_queries_total %lld\n"
+	     "# HELP mtproxy_expired_queries_total Queries that expired waiting for a response.\n"
+	     "# TYPE mtproxy_expired_queries_total counter\n"
+	     "mtproxy_expired_queries_total %lld\n"
+	     "# HELP mtproxy_dropped_queries_total Queries dropped with nowhere to forward.\n"
+	     "# TYPE mtproxy_dropped_queries_total counter\n"
+	     "mtproxy_dropped_queries_total %lld\n"
+	     "# HELP mtproxy_forwarded_responses_total Total responses forwarded back to clients.\n"
+	     "# TYPE mtproxy_forwarded_responses_total counter\n"
+	     "mtproxy_forwarded_responses_total %lld\n"
+	     "# HELP mtproxy_dropped_responses_total Responses that failed to forward.\n"
+	     "# TYPE mtproxy_dropped_responses_total counter\n"
+	     "mtproxy_dropped_responses_total %lld\n"
+	     "# HELP mtproxy_forwarded_acks_total Total simple ACKs forwarded.\n"
+	     "# TYPE mtproxy_forwarded_acks_total counter\n"
+	     "mtproxy_forwarded_acks_total %lld\n"
+	     "# HELP mtproxy_dropped_acks_total Simple ACKs that failed to forward.\n"
+	     "# TYPE mtproxy_dropped_acks_total counter\n"
+	     "mtproxy_dropped_acks_total %lld\n"
+	     "# HELP mtproxy_rpcs_created_total Total RPC connections created.\n"
+	     "# TYPE mtproxy_rpcs_created_total counter\n"
+	     "mtproxy_rpcs_created_total %lld\n"
+	     "# HELP mtproxy_rpc_dropped_answers_total RPC answers dropped.\n"
+	     "# TYPE mtproxy_rpc_dropped_answers_total counter\n"
+	     "mtproxy_rpc_dropped_answers_total %lld\n"
+	     "# HELP mtproxy_rpc_dropped_running_total RPC connections dropped while running.\n"
+	     "# TYPE mtproxy_rpc_dropped_running_total counter\n"
+	     "mtproxy_rpc_dropped_running_total %lld\n"
+	     "# HELP mtproxy_ext_connections_created_total Total external connections created.\n"
+	     "# TYPE mtproxy_ext_connections_created_total counter\n"
+	     "mtproxy_ext_connections_created_total %lld\n"
+	     "# HELP mtproxy_proxy_errors_total Internal proxy errors.\n"
+	     "# TYPE mtproxy_proxy_errors_total counter\n"
+	     "mtproxy_proxy_errors_total %lld\n"
+	     "# HELP mtproxy_connections_failed_lru_total Connections dropped by LRU eviction.\n"
+	     "# TYPE mtproxy_connections_failed_lru_total counter\n"
+	     "mtproxy_connections_failed_lru_total %lld\n"
+	     "# HELP mtproxy_connections_failed_flood_total Connections dropped due to flood detection.\n"
+	     "# TYPE mtproxy_connections_failed_flood_total counter\n"
+	     "mtproxy_connections_failed_flood_total %lld\n"
+	     "# HELP mtproxy_http_queries_total Total HTTP queries processed.\n"
+	     "# TYPE mtproxy_http_queries_total counter\n"
+	     "mtproxy_http_queries_total %lld\n"
+	     "# HELP mtproxy_http_bad_headers_total HTTP requests with malformed headers.\n"
+	     "# TYPE mtproxy_http_bad_headers_total counter\n"
+	     "mtproxy_http_bad_headers_total %lld\n",
+	     S(get_queries),
+	     S(tot_forwarded_queries),
+	     S(expired_forwarded_queries),
+	     S(dropped_queries),
+	     S(tot_forwarded_responses),
+	     S(dropped_responses),
+	     S(tot_forwarded_simple_acks),
+	     S(dropped_simple_acks),
+	     S(active_rpcs_created),
+	     S(rpc_dropped_answers),
+	     S(rpc_dropped_running),
+	     S(ext_connections_created),
+	     S(mtproto_proxy_errors),
+	     S(connections_failed_lru),
+	     S(connections_failed_flood),
+	     S(http_queries),
+	     S(http_bad_headers)
+  );
+
+  /* gauges */
+  sb_printf (sb,
+	     "# HELP mtproxy_uptime_seconds Time since proxy started in seconds.\n"
+	     "# TYPE mtproxy_uptime_seconds gauge\n"
+	     "mtproxy_uptime_seconds %d\n"
+	     "# HELP mtproxy_workers Number of worker processes.\n"
+	     "# TYPE mtproxy_workers gauge\n"
+	     "mtproxy_workers %d\n"
+	     "# HELP mtproxy_active_rpcs Currently active RPC connections.\n"
+	     "# TYPE mtproxy_active_rpcs gauge\n"
+	     "mtproxy_active_rpcs %lld\n"
+	     "# HELP mtproxy_ext_connections Current external client connections.\n"
+	     "# TYPE mtproxy_ext_connections gauge\n"
+	     "mtproxy_ext_connections %lld\n"
+	     "# HELP mtproxy_http_connections Current HTTP connections.\n"
+	     "# TYPE mtproxy_http_connections gauge\n"
+	     "mtproxy_http_connections %d\n"
+	     "# HELP mtproxy_pending_http_queries HTTP queries awaiting processing.\n"
+	     "# TYPE mtproxy_pending_http_queries gauge\n"
+	     "mtproxy_pending_http_queries %d\n"
+	     "# HELP mtproxy_active_connections Total active network connections.\n"
+	     "# TYPE mtproxy_active_connections gauge\n"
+	     "mtproxy_active_connections %d\n"
+	     "# HELP mtproxy_allocated_connections Total allocated connection slots.\n"
+	     "# TYPE mtproxy_allocated_connections gauge\n"
+	     "mtproxy_allocated_connections %d\n"
+	     "# HELP mtproxy_active_dh_connections Connections in DH key exchange.\n"
+	     "# TYPE mtproxy_active_dh_connections gauge\n"
+	     "mtproxy_active_dh_connections %d\n"
+	     "# HELP mtproxy_ready_targets Backend DC targets ready for connections.\n"
+	     "# TYPE mtproxy_ready_targets gauge\n"
+	     "mtproxy_ready_targets %d\n"
+	     "# HELP mtproxy_network_buffers_used_bytes Network buffer memory in use.\n"
+	     "# TYPE mtproxy_network_buffers_used_bytes gauge\n"
+	     "mtproxy_network_buffers_used_bytes %lld\n"
+	     "# HELP mtproxy_network_buffers_allocated_bytes Network buffer memory allocated.\n"
+	     "# TYPE mtproxy_network_buffers_allocated_bytes gauge\n"
+	     "mtproxy_network_buffers_allocated_bytes %lld\n",
+	     uptime,
+	     workers,
+	     S(active_rpcs),
+	     S(ext_connections),
+	     S(http_connections),
+	     S(pending_http_queries),
+	     S(conn.active_connections),
+	     S(conn.allocated_connections),
+	     S(conn.active_dh_connections),
+	     SW(conn.ready_targets),
+	     SW(bufs.total_used_buffers_size),
+	     SW(bufs.allocated_buffer_bytes)
+  );
+
+#undef S
+#undef S1
+#undef SW
+}
+
 /*
  *
  *      JOB UTILS
@@ -1407,30 +1550,37 @@ int hts_stats_execute (connection_job_t c, struct raw_message *msg, int op) {
     return -404;
   }
 
-  if (D->uri_size != 6) {
-    return -404;
-  }
-  
   char ReqHdr[MAX_HTTP_HEADER_SIZE];
   assert (rwm_fetch_data (msg, &ReqHdr, D->header_size) == D->header_size);
-  
-  if (memcmp (ReqHdr + D->uri_offset, "/stats", 6)) {
+
+  int is_stats = (D->uri_size == 6 && !memcmp (ReqHdr + D->uri_offset, "/stats", 6));
+  int is_metrics = (D->uri_size == 8 && !memcmp (ReqHdr + D->uri_offset, "/metrics", 8));
+
+  if (!is_stats && !is_metrics) {
     return -404;
   }
 
   stats_buffer_t sb;
   sb_alloc(&sb, 1 << 20);
-  mtfront_prepare_stats(&sb);
+
+  const char *content_type;
+  if (is_metrics) {
+    mtfront_prepare_prometheus_stats(&sb);
+    content_type = "text/plain; version=0.0.4; charset=utf-8";
+  } else {
+    mtfront_prepare_stats(&sb);
+    content_type = "text/plain";
+  }
 
   struct raw_message *raw = calloc (sizeof (*raw), 1);
   rwm_init (raw, 0);
-  write_basic_http_header_raw (c, raw, 200, 0, sb.pos, 0, "text/plain");
+  write_basic_http_header_raw (c, raw, 200, 0, sb.pos, 0, content_type);
   assert (rwm_push_data (raw, sb.buff, sb.pos) == sb.pos);
   mpq_push_w (CONN_INFO(c)->out_queue, raw, 0);
   job_signal (JOB_REF_CREATE_PASS (c), JS_RUN);
 
   sb_release (&sb);
-  
+
   return 0;
 }
 

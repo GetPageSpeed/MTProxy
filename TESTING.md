@@ -3,7 +3,8 @@
 This repository includes a test suite to verify the functionality of the MTProxy server. The tests run in Docker or directly on the host and check:
 
 1. **HTTP Stats**: Verifies the stats endpoint (port 8888) is accessible.
-2. **MTProto Port**: Verifies the MTProto port accepts TCP connections.
+2. **Prometheus Metrics**: Verifies the `/metrics` endpoint returns valid Prometheus exposition format.
+3. **MTProto Port**: Verifies the MTProto port accepts TCP connections.
 
 ## Prerequisites
 
