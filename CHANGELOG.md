@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.15] - 2026-03-24
+
+### Fixed
+- Fake-TLS emulation now replays all encrypted Application Data records from the backend, not just the first one — eliminates DPI fingerprinting via record-count mismatch ([#42](https://github.com/GetPageSpeed/MTProxy/issues/42))
+
 ## [3.0.14] - 2026-03-23
 
 ### Added
