@@ -1,0 +1,34 @@
+name: Fuzz Testing
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang libssl-dev zlib1g-dev
+
+    - name: Build fuzz targets
+      run: make fuzz CC=clang
+
+    - name: Run fuzz tests (60s each)
+      run: make fuzz-run FUZZ_DURATION=60
+
+    - name: Upload crash artifacts
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: fuzz-crashes
+        path: |
+          fuzz/crash-*
+          fuzz/oom-*
+          fuzz/timeout-*
