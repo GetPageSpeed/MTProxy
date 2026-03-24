@@ -35,6 +35,7 @@
 #include <unistd.h>
 
 #include <openssl/bn.h>
+#include <openssl/crypto.h>
 #include <openssl/rand.h>
 
 #include "common/kprintf.h"
@@ -1026,7 +1027,7 @@ static int is_allowed_timestamp (int timestamp) {
 
   // allow all requests with timestamp recently in past, regardless of ability to check repeating client random
   // the allowed error must be big enough to allow requests after time synchronization
-  const int MAX_ALLOWED_TIMESTAMP_ERROR = 10 * 60;
+  const int MAX_ALLOWED_TIMESTAMP_ERROR = 2 * 60;
   if (timestamp > now - MAX_ALLOWED_TIMESTAMP_ERROR) {
     // this can happen only first (MAX_ALLOWED_TIMESTAMP_ERROR + 3) sceonds after first_client_random->time
     vkprintf (1, "Allow recent request with timestamp %d without full check for client random duplication\n", timestamp);
@@ -1255,7 +1256,7 @@ int tcp_rpcs_compact_parse_execute (connection_job_t C) {
         int secret_id;
         for (secret_id = 0; secret_id < ext_secret_cnt; secret_id++) {
           sha256_hmac (ext_secret[secret_id], 16, client_hello, len, expected_random);
-          if (memcmp (expected_random, client_random, 28) == 0) {
+          if (CRYPTO_memcmp (expected_random, client_random, 28) == 0) {
             break;
           }
         }
