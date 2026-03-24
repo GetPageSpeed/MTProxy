@@ -49,8 +49,8 @@
 
 #define	CONN_CUSTOM_DATA_BYTES	256
 
-#define	NEED_MORE_BYTES	(~(-1 << 31))
-#define	SKIP_ALL_BYTES	(-1 << 31)
+#define	NEED_MORE_BYTES	((int)0x7FFFFFFFu)
+#define	SKIP_ALL_BYTES	((int)0x80000000u)
 
 
 /* for connection flags */

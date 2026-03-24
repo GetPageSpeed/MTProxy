@@ -47,7 +47,7 @@ DEPDIRS := ${DEP} $(addprefix ${DEP}/,${PROJECTS})
 ALLDIRS := ${DEPDIRS} ${OBJDIRS}
 
 
-.PHONY:	all clean tests test test-tls test-multi-secret docker-image-amd64 docker-run-help-amd64
+.PHONY:	all clean lint tests test test-tls test-multi-secret docker-image-amd64 docker-run-help-amd64
 
 EXELIST	:= ${EXE}/mtproto-proxy
 
@@ -118,6 +118,14 @@ ${LIB}/libkdb.a: ${LIB_OBJS}
 
 clean:
 	rm -rf ${OBJ} ${DEP} ${EXE} || true
+
+lint:
+	cppcheck --enable=warning,portability,performance \
+	  --error-exitcode=1 \
+	  --suppressions-list=.cppcheck-suppressions \
+	  --suppress=missingIncludeSystem \
+	  --std=c11 -I common -I . \
+	  common/ jobs/ mtproto/ net/ crypto/ engine/
 
 force-clean: clean
 

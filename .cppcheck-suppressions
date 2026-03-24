@@ -1,0 +1,42 @@
+// JOB_REF_PASS / PTR_MOVE macros intentionally zero the pointer for ownership
+// transfer.  cppcheck sees the assignment to the parameter but not the side
+// effect on the caller's variable (GNU statement-expression).
+uselessAssignmentPtrArg
+
+// __VERSION__ is a GCC/Clang built-in macro, not user-defined.
+unknownMacro:*mtproto-proxy.c
+
+// Functions called inside assert() are intentional — these are cheap
+// verification calls in debug builds, not accidental side effects.
+assertWithSideEffect
+
+// Void pointer arithmetic is a GCC extension used deliberately throughout the
+// codebase for low-level buffer manipulation.
+arithOperationsOnVoidPointer
+
+// tcp_recv_buffers[i + 1] at i = MAX_TCP_RECV_BUFFERS - 1: the ternary guard
+// (tcp_recv_buffers_num) is 0 on the first iteration, so the access never
+// happens.
+arrayIndexOutOfBounds:net/net-connections.c
+
+// IPv6 formatting loop: i < 8 prevents a[8] access.
+arrayIndexOutOfBounds:net/net-events.c
+
+// assert-before-null-check is an intentional defensive pattern: the assert
+// fires in debug, the null check handles release gracefully.
+nullPointerRedundantCheck
+
+// JOB_REF_PASS zeroes the local `job` pointer, but job_free() / unlock_job()
+// return before dereferencing the now-NULL caller copy.
+nullPointer:jobs/jobs.c
+
+// SIG2INT(64) takes the (sig == 64) ternary branch and returns 1ull.  The
+// dead branch (1ull << 64) is never evaluated.
+shiftTooManyBits:engine/engine.c
+
+// %d for unsigned IP octets (0-255 range, safe for signed int format).
+invalidPrintfArgType_sint:net/net-events.c
+
+// Informational — not errors.
+toomanyconfigs
+normalCheckLevelMaxBranches

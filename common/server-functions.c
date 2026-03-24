@@ -345,7 +345,9 @@ void parse_option_internal (const char *name, int arg, int *var, int val, unsign
   assert (engine_parse_options_num <= engine_parse_options_size);
   if (engine_parse_options_num == engine_parse_options_size) {
     engine_parse_options_size = 10 + 2 * engine_parse_options_size;
-    engine_parse_options = realloc (engine_parse_options, sizeof (struct engine_parse_option) * engine_parse_options_size);
+    struct engine_parse_option *tmp = realloc (engine_parse_options, sizeof (struct engine_parse_option) * engine_parse_options_size);
+    assert (tmp && "realloc failed for engine_parse_options");
+    engine_parse_options = tmp;
   }
   assert (engine_parse_options_num < engine_parse_options_size);
   struct engine_parse_option *P = &engine_parse_options[engine_parse_options_num ++];

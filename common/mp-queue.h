@@ -42,10 +42,10 @@ typedef struct mp_semaphore {
 typedef int int128_t __attribute__((__mode__(TI)));
 # define DLONG int128_t
 // # define DLONG __int128
-# define MQN_SAFE (-1LL << 63)
+# define MQN_SAFE ((long)(1ULL << 63))
 #else
 # define DLONG long long
-# define MQN_SAFE (-1L << 31)
+# define MQN_SAFE ((long)(1UL << 31))
 #endif
 
 
