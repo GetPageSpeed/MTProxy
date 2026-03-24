@@ -47,7 +47,7 @@ DEPDIRS := ${DEP} $(addprefix ${DEP}/,${PROJECTS})
 ALLDIRS := ${DEPDIRS} ${OBJDIRS}
 
 
-.PHONY:	all clean lint tests test test-tls test-multi-secret test-ip-acl docker-image-amd64 docker-run-help-amd64 docker-image-arm64 docker-run-help-arm64
+.PHONY:	all clean lint tests test test-tls test-multi-secret test-ip-acl docker-image-amd64 docker-run-help-amd64 docker-image-arm64 docker-run-help-arm64 fuzz fuzz-run
 
 EXELIST	:= ${EXE}/mtproto-proxy
 
@@ -74,7 +74,7 @@ LIB_OBJS_NORMAL := \
 	${OBJ}/net/net-connections.o \
 	${OBJ}/net/net-rpc-targets.o \
 	${OBJ}/net/net-tcp-connections.o ${OBJ}/net/net-tcp-rpc-common.o ${OBJ}/net/net-tcp-rpc-client.o ${OBJ}/net/net-tcp-rpc-server.o \
-	${OBJ}/net/net-http-server.o ${OBJ}/net/net-ip-acl.o \
+	${OBJ}/net/net-http-server.o ${OBJ}/net/net-http-parse.o ${OBJ}/net/net-tls-parse.o ${OBJ}/net/net-ip-acl.o \
 	${OBJ}/common/tl-parse.o ${OBJ}/common/common-stats.o \
 	${OBJ}/engine/engine.o ${OBJ}/engine/engine-signals.o \
 	${OBJ}/engine/engine-net.o \
@@ -204,3 +204,10 @@ test-ip-acl:
 		docker compose -f tests/docker-compose.ip-acl-test.yml down -v; exit 1)
 	docker compose -f tests/docker-compose.ip-acl-test.yml down -v
 
+FUZZ_DURATION ?= 60
+
+fuzz:
+	$(MAKE) -C fuzz
+
+fuzz-run:
+	$(MAKE) -C fuzz run FUZZ_DURATION=$(FUZZ_DURATION)

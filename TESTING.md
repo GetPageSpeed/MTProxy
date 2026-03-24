@@ -60,6 +60,35 @@ nc -zv 149.154.167.50 443
 
 If this fails, your network (ISP, firewall, or hosting provider) is blocking connections to Telegram.
 
+## Fuzz Testing
+
+The `fuzz/` directory contains [libFuzzer](https://llvm.org/docs/LibFuzzer.html) harnesses for protocol parsers, compiled with AddressSanitizer and UndefinedBehaviorSanitizer.
+
+### Targets
+
+| Harness | Parser | What it tests |
+|---------|--------|---------------|
+| `fuzz_tls_server_hello` | `tls_check_server_hello()` | Extension parsing, length validation, record counting |
+| `fuzz_tls_client_hello` | `tls_parse_sni()` + `tls_parse_client_hello_ciphers()` | SNI extraction, cipher suite GREASE skipping |
+| `fuzz_http_request` | `http_parse_data()` | HTTP state machine, header limits, Content-Length overflow |
+
+### Running
+
+Requires **Clang** (for `-fsanitize=fuzzer`):
+
+```bash
+# Build fuzz targets
+make fuzz CC=clang
+
+# Run all targets for 60 seconds each (default)
+make fuzz-run
+
+# Custom duration
+make fuzz-run FUZZ_DURATION=300
+```
+
+Seed corpus files are in `fuzz/corpus/`. The fuzzers also run automatically in CI on every push and PR.
+
 ## Troubleshooting
 
 - **Timeout**: If tests time out, check your network connection. MTProto proxies may be blocked by some ISPs.

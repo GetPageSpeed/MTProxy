@@ -48,6 +48,7 @@
 #include "net/net-events.h"
 #include "net/net-tcp-connections.h"
 #include "net/net-tcp-rpc-ext-server.h"
+#include "net/net-tls-parse.h"
 #include "net/net-thread.h"
 #include "mtproto/mtproto-dc-table.h"
 
@@ -401,8 +402,6 @@ void tcp_rpcs_set_ext_rand_pad_only(int set) {
 
 static int allow_only_tls;
 
-#define MAX_ENCRYPTED_RECORDS 8
-
 struct domain_info {
   const char *domain;
   int port;
@@ -629,114 +628,6 @@ static unsigned char *create_request (const char *domain) {
   return result;
 }
 
-static int read_length (const unsigned char *response, int *pos) {
-  *pos += 2;
-  return response[*pos - 2] * 256 + response[*pos - 1];
-}
-
-static int check_response (const unsigned char *response, int len, const unsigned char *request_session_id, int *is_reversed_extension_order, int *encrypted_record_sizes, int *encrypted_record_count) {
-#define FAIL(error) {                                               \
-    kprintf ("Failed to parse upstream TLS response: " error "\n"); \
-    return 0;                                                       \
-  }
-#define CHECK_LENGTH(length)  \
-  if (pos + (length) > len) { \
-    FAIL("Too short");        \
-  }
-#define EXPECT_STR(pos, str, error)                          \
-  if (memcmp (response + pos, str, sizeof (str) - 1) != 0) { \
-    FAIL(error);                                             \
-  }
-
-  int pos = 0;
-  CHECK_LENGTH(3);
-  EXPECT_STR(0, "\x16\x03\x03", "Non-TLS response or TLS <= 1.1");
-  pos += 3;
-  CHECK_LENGTH(2);
-  int server_hello_length = read_length (response, &pos);
-  if (server_hello_length <= 39) {
-    FAIL("Receive too short ServerHello");
-  }
-  CHECK_LENGTH(server_hello_length);
-
-  EXPECT_STR(5, "\x02\x00", "Non-TLS response 2");
-  EXPECT_STR(9, "\x03\x03", "Non-TLS response 3");
-
-  if (memcmp (response + 11, "\xcf\x21\xad\x74\xe5\x9a\x61\x11\xbe\x1d\x8c\x02\x1e\x65\xb8\x91"
-                             "\xc2\xa2\x11\x16\x7a\xbb\x8c\x5e\x07\x9e\x09\xe2\xc8\xa8\x33\x9c", 32) == 0) {
-    FAIL("TLS 1.3 servers returning HelloRetryRequest are not supprted");
-  }
-  if (response[43] == '\x00') {
-    FAIL("TLS <= 1.2: empty session_id");
-  }
-  EXPECT_STR(43, "\x20", "Non-TLS response 4");
-  if (server_hello_length <= 75) {
-    FAIL("Receive too short server hello 2");
-  }
-  if (memcmp (response + 44, request_session_id, 32) != 0) {
-    FAIL("TLS <= 1.2: expected mirrored session_id");
-  }
-  EXPECT_STR(76, "\x13\x01\x00", "TLS <= 1.2: expected x25519 as a chosen cipher");
-  pos += 74;
-  int extensions_length = read_length (response, &pos);
-  if (extensions_length + 76 != server_hello_length) {
-    FAIL("Receive wrong extensions length");
-  }
-  int sum = 0;
-  while (pos < 5 + server_hello_length - 4) {
-    int extension_id = read_length (response, &pos);
-    if (extension_id != 0x33 && extension_id != 0x2b) {
-      FAIL("Receive unexpected extension");
-    }
-    if (pos == 83) {
-      *is_reversed_extension_order = (extension_id == 0x2b);
-    }
-    sum += extension_id;
-
-    int extension_length = read_length (response, &pos);
-    if (pos + extension_length > 5 + server_hello_length) {
-      FAIL("Receive wrong extension length");
-    }
-    if (extension_length != (extension_id == 0x33 ? 36 : 2)) {
-      FAIL("Unexpected extension length");
-    }
-    pos += extension_length;
-  }
-  if (sum != 0x33 + 0x2b) {
-    FAIL("Receive duplicate extensions");
-  }
-  if (pos != 5 + server_hello_length) {
-    FAIL("Receive wrong extensions list");
-  }
-
-  CHECK_LENGTH(6);
-  EXPECT_STR(pos, "\x14\x03\x03\x00\x01\x01", "Expected dummy ChangeCipherSpec");
-  pos += 6;
-
-  *encrypted_record_count = 0;
-  while (pos + 5 <= len && memcmp (response + pos, "\x17\x03\x03", 3) == 0) {
-    pos += 3;
-    int rec_len = read_length (response, &pos);
-    if (rec_len == 0 || pos + rec_len > len) {
-      break;
-    }
-    if (*encrypted_record_count < MAX_ENCRYPTED_RECORDS) {
-      encrypted_record_sizes[*encrypted_record_count] = rec_len;
-    }
-    (*encrypted_record_count)++;
-    pos += rec_len;
-  }
-  if (*encrypted_record_count == 0) {
-    FAIL("No encrypted application data records");
-  }
-
-#undef FAIL
-#undef CHECK_LENGTH
-#undef EXPECT_STR
-
-  return 1;
-}
-
 static int update_domain_info (struct domain_info *info) {
   const char *domain = info->domain;
 
@@ -934,7 +825,7 @@ static int update_domain_info (struct domain_info *info) {
             int is_reversed_extension_order = -1;
             int probe_record_sizes[MAX_ENCRYPTED_RECORDS];
             int probe_record_count = 0;
-            if (check_response (responses[i], response_len[i], requests[i] + 44, &is_reversed_extension_order, probe_record_sizes, &probe_record_count)) {
+            if (tls_check_server_hello (responses[i], response_len[i], requests[i] + 44, &is_reversed_extension_order, probe_record_sizes, &probe_record_count)) {
               assert (is_reversed_extension_order != -1);
               assert (probe_record_count > 0);
               // Sum all record sizes into total encrypted size for this probe
@@ -1044,52 +935,16 @@ static int update_domain_info (struct domain_info *info) {
 #undef TLS_REQUEST_LENGTH
 
 static const struct domain_info *get_sni_domain_info (const unsigned char *request, int len) {
-#define CHECK_LENGTH(length)  \
-  if (pos + (length) > len) { \
-    return NULL;              \
+  char domain_buf[256];
+  int domain_length = tls_parse_sni (request, len, domain_buf, sizeof (domain_buf));
+  if (domain_length < 0) {
+    return NULL;
   }
-
-  int pos = 11 + 32 + 1 + 32;
-  CHECK_LENGTH(2);
-  int cipher_suites_length = read_length (request, &pos);
-  CHECK_LENGTH(cipher_suites_length + 4);
-  pos += cipher_suites_length + 4;
-  while (1) {
-    CHECK_LENGTH(4);
-    int extension_id = read_length (request, &pos);
-    int extension_length = read_length (request, &pos);
-    CHECK_LENGTH(extension_length);
-
-    if (extension_id == 0) {
-      // found SNI
-      CHECK_LENGTH(5);
-      int inner_length = read_length (request, &pos);
-      if (inner_length != extension_length - 2) {
-        return NULL;
-      }
-      if (request[pos++] != 0) {
-        return NULL;
-      }
-      int domain_length = read_length (request, &pos);
-      if (domain_length != extension_length - 5) {
-        return NULL;
-      }
-      int i;
-      for (i = 0; i < domain_length; i++) {
-        if (request[pos + i] == 0) {
-          return NULL;
-        }
-      }
-      const struct domain_info *info = get_domain_info ((const char *)(request + pos), domain_length);
-      if (info == NULL) {
-        vkprintf (1, "Receive request for unknown domain %.*s\n", domain_length, request + pos);
-      }
-      return info;
-    }
-
-    pos += extension_length;
+  const struct domain_info *info = get_domain_info (domain_buf, domain_length);
+  if (info == NULL) {
+    vkprintf (1, "Receive request for unknown domain %.*s\n", domain_length, domain_buf);
   }
-#undef CHECK_LENGTH
+  return info;
 }
 
 void tcp_rpc_add_proxy_domain (const char *domain) {
@@ -1507,22 +1362,11 @@ int tcp_rpcs_compact_parse_execute (connection_job_t C) {
           RETURN_TLS_ERROR(info);
         }
 
-        int pos = 76;
-        int cipher_suites_length = read_length (client_hello, &pos);
-        if (pos + cipher_suites_length > read_len) {
-          vkprintf (1, "Too long cipher suites list of length %d\n", cipher_suites_length);
-          RETURN_TLS_ERROR(info);
-        }
-        while (cipher_suites_length >= 2 && (client_hello[pos] & 0x0F) == 0x0A && (client_hello[pos + 1] & 0x0F) == 0x0A) {
-          // skip grease
-          cipher_suites_length -= 2;
-          pos += 2;
-        }
-        if (cipher_suites_length <= 1 || client_hello[pos] != 0x13 || client_hello[pos + 1] < 0x01 || client_hello[pos + 1] > 0x03) {
+        unsigned char cipher_suite_id;
+        if (tls_parse_client_hello_ciphers (client_hello, read_len, &cipher_suite_id) < 0) {
           vkprintf (1, "Can't find supported cipher suite\n");
           RETURN_TLS_ERROR(info);
         }
-        unsigned char cipher_suite_id = client_hello[pos + 1];
 
         assert (rwm_skip_data (&c->in, len) == len);
         c->flags |= C_IS_TLS;
@@ -1541,7 +1385,7 @@ int tcp_rpcs_compact_parse_execute (connection_job_t C) {
         memcpy (response_buffer + 76, "\x13\x01\x00\x00\x2e", 5);
         response_buffer[77] = cipher_suite_id;
 
-        pos = 81;
+        int pos = 81;
         int tls_server_extensions[3] = {0x33, 0x2b, -1};
         if (info->is_reversed_extension_order) {
           int t = tls_server_extensions[0];
