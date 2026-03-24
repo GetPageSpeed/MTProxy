@@ -128,6 +128,14 @@ if [ -n "$EE_DOMAIN" ]; then
     CMD="$CMD -D $EE_DOMAIN"
 fi
 
+if [ -n "$IP_BLOCKLIST" ]; then
+    CMD="$CMD --ip-blocklist $IP_BLOCKLIST"
+fi
+
+if [ -n "$IP_ALLOWLIST" ]; then
+    CMD="$CMD --ip-allowlist $IP_ALLOWLIST"
+fi
+
 CMD="$CMD --aes-pwd proxy-secret data/proxy-multi.conf -M $WORKERS -u mtproxy $ORIG_ARGS"
 
 echo "Starting MTProxy with command: $CMD"

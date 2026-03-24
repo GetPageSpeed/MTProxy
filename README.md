@@ -382,6 +382,8 @@ docker run -d \
 - `RANDOM_PADDING`: Enable random padding only mode (true/false, default: false)
 - `EXTERNAL_IP`: Your public IP address for NAT environments (optional)
 - `EE_DOMAIN`: Domain for EE Mode (Fake-TLS + Padding), e.g. `www.google.com`. Accepts `host:port` for custom TLS backends (e.g., `mywebsite.com:8443`). See [Custom TLS Backend](#ee-mode-with-custom-tls-backend-tcp-splitting)
+- `IP_BLOCKLIST`: Path (inside container) to a file with CIDR ranges to reject (one per line, `#` comments allowed). Example: `--ip-blocklist /opt/mtproxy/blocklist.txt`
+- `IP_ALLOWLIST`: Path (inside container) to a file with CIDR ranges to exclusively allow. When set, only matching IPs are accepted. Both IPv4 and IPv6 CIDR notation supported. Files are reloaded on `SIGHUP`.
 
 #### Getting Statistics
 

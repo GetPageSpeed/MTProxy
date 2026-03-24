@@ -320,6 +320,7 @@ struct connections_stat {
   long long accept_rate_limit_failed;
   long long accept_init_accepted_failed;
   long long accept_connection_limit_failed;
+  long long accept_ip_acl_rejected;
 };
 
 #define QUERY_INFO(_c) ((struct query_info *)(_c)->j_custom)

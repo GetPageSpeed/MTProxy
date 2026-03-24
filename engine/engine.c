@@ -55,6 +55,7 @@
 #include "engine/engine-net.h"
 #include "engine/engine-rpc.h"
 #include "engine/engine-signals.h"
+#include "net/net-ip-acl.h"
 
 #include "jobs/jobs.h"
 
@@ -94,6 +95,8 @@ static void default_sighup (void) {
   if (res < 0) {
     fprintf (stderr, "config check failed! (code %d)\n", res);
   }
+
+  ip_acl_reload ();
 }
 
 static void default_sigusr1 (void) {

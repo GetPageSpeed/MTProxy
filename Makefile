@@ -47,7 +47,7 @@ DEPDIRS := ${DEP} $(addprefix ${DEP}/,${PROJECTS})
 ALLDIRS := ${DEPDIRS} ${OBJDIRS}
 
 
-.PHONY:	all clean lint tests test test-tls test-multi-secret docker-image-amd64 docker-run-help-amd64
+.PHONY:	all clean lint tests test test-tls test-multi-secret test-ip-acl docker-image-amd64 docker-run-help-amd64
 
 EXELIST	:= ${EXE}/mtproto-proxy
 
@@ -74,7 +74,7 @@ LIB_OBJS_NORMAL := \
 	${OBJ}/net/net-connections.o \
 	${OBJ}/net/net-rpc-targets.o \
 	${OBJ}/net/net-tcp-connections.o ${OBJ}/net/net-tcp-rpc-common.o ${OBJ}/net/net-tcp-rpc-client.o ${OBJ}/net/net-tcp-rpc-server.o \
-	${OBJ}/net/net-http-server.o \
+	${OBJ}/net/net-http-server.o ${OBJ}/net/net-ip-acl.o \
 	${OBJ}/common/tl-parse.o ${OBJ}/common/common-stats.o \
 	${OBJ}/engine/engine.o ${OBJ}/engine/engine-signals.o \
 	${OBJ}/engine/engine-net.o \
@@ -179,4 +179,22 @@ test-multi-secret:
 	@docker compose -f tests/docker-compose.multi-secret-test.yml logs mtproxy 2>&1 | grep -q "t.me/proxy" || \
 		(echo "FAIL: No connection links found in proxy logs"; exit 1)
 	docker compose -f tests/docker-compose.multi-secret-test.yml down
+
+test-ip-acl:
+	@if [ -z "$$MTPROXY_SECRET" ]; then \
+		export MTPROXY_SECRET=$$(head -c 16 /dev/urandom | xxd -ps); \
+		echo "Generated MTPROXY_SECRET: $$MTPROXY_SECRET"; \
+	fi && \
+	export MTPROXY_SECRET=$${MTPROXY_SECRET:-$$(head -c 16 /dev/urandom | xxd -ps)} && \
+	echo "Using secret: $$MTPROXY_SECRET" && \
+	docker compose -f tests/docker-compose.ip-acl-test.yml build && \
+	docker compose -f tests/docker-compose.ip-acl-test.yml up -d --wait mtproxy && \
+	echo "Phase 1: testing blocked connections..." && \
+	docker compose -f tests/docker-compose.ip-acl-test.yml run --rm blocked-tester && \
+	echo "Phase 2: testing allowed connections..." && \
+	docker compose -f tests/docker-compose.ip-acl-test.yml run --rm tester || \
+		(echo "IP ACL test failed"; \
+		docker compose -f tests/docker-compose.ip-acl-test.yml logs mtproxy; \
+		docker compose -f tests/docker-compose.ip-acl-test.yml down -v; exit 1)
+	docker compose -f tests/docker-compose.ip-acl-test.yml down -v
 
