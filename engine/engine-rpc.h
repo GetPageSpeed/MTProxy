@@ -29,10 +29,11 @@
 
 #include "common/tl-parse.h"
 #include "common/precise-time.h"
+#if defined(__x86_64__) || defined(__i386__)
 #include <x86intrin.h>
-
 #ifndef rdtsc
 #define rdtsc __rdtsc
+#endif
 #endif
 
 struct stats_buffer;

@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.18] - 2026-03-24
+
+### Added
+- ARM64 (aarch64) support — Docker images now build for both `linux/amd64` and `linux/arm64`, enabling native deployment on Raspberry Pi, Oracle Cloud ARM, Apple Silicon, and other ARM64 platforms ([#48](https://github.com/GetPageSpeed/MTProxy/issues/48))
+- CI: ARM64 test job on native GitHub ARM runner
+- Makefile: `docker-image-arm64` and `docker-run-help-arm64` targets
+
+### Changed
+- CRC32/CRC32C uses table-based software fallback on ARM64 (functionally correct; hardware-accelerated ARMv8 CRC can be added later)
+- Dockerfile no longer hardcodes `--platform=linux/amd64`
+
 ## [3.0.17] - 2026-03-24
 
 ### Added

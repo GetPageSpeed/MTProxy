@@ -111,7 +111,13 @@ static inline void barrier (void) {
 }
 
 static inline void mfence (void) {
+#if defined(__x86_64__) || defined(__i386__)
   asm volatile ("mfence": : :"memory");
+#elif defined(__aarch64__)
+  asm volatile ("dmb ish": : :"memory");
+#else
+  __sync_synchronize();
+#endif
 }
 
 //extern struct multicast_host multicast_hosts[];

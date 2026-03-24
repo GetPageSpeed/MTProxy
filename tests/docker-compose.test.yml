@@ -1,7 +1,6 @@
 services:
   mtproxy:
-    platform: linux/amd64
-    build: 
+    build:
       context: ..
       dockerfile: Dockerfile
     ports:

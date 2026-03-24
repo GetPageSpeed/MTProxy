@@ -34,6 +34,12 @@ static __inline__ unsigned long long rdtsc(void) {
   __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
   return ( (unsigned long long)lo)|( ((unsigned long long)hi)<<32 );
 }
+#elif defined(__aarch64__)
+static __inline__ unsigned long long rdtsc(void) {
+  unsigned long long val;
+  __asm__ __volatile__ ("mrs %0, cntvct_el0" : "=r" (val));
+  return val;
+}
 #endif
 
 /* net-event.h */

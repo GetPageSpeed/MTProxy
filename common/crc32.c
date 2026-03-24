@@ -32,6 +32,7 @@
 #include "common/kprintf.h"
 
 
+#if defined(__x86_64__) || defined(__i386__)
 #define FASTMOV_RMI32_TO_SSE(dst, src) \
 	asm volatile ("movd %1, %0\n\t" : "=x" (dst) : "g" (src))
 
@@ -88,6 +89,7 @@
 	} while(0)
 
 #endif
+#endif /* x86 asm macros */
 
 
 static const unsigned int crc32_table[256] =
@@ -425,6 +427,7 @@ unsigned crc32_partial_generic (const void *data, long len, unsigned crc) {
 //mu(65-bit): 01001110000111110010001100110110000010111001010010110001111010101
 #define CRC64_REFLECTED_MU   0x9c3e466c172963d5ll
 
+#if defined(__x86_64__) || defined(__i386__)
 static const char mask[64] __attribute__ ((aligned (64))) = {
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
@@ -537,6 +540,7 @@ unsigned crc32_partial_clmul (const void *data, long len, unsigned crc) {
   return crc32_table0[lo & 0xff] ^ crc32_table1[(lo & 0xff00) >> 8] ^ crc32_table2[(lo & 0xff0000) >> 16] ^ crc32_table[lo >> 24] ^ ((unsigned) hi);
 #endif
 }
+#endif /* x86 CLMUL CRC-32 */
 
 /******************** CRC-64 ********************/
 
@@ -622,6 +626,7 @@ uint64_t crc64_partial_one_table (const void *data, long len, uint64_t crc) {
   return crc;
 }
 
+#if defined(__x86_64__) || defined(__i386__)
 static uint64_t crc64_barrett_reduction (v2di D) {
   /* After reflection mu constant is 64 bit */
   v2di E =  __builtin_ia32_pclmulqdq128 (D, CRC64_MU, 0x00);
@@ -664,6 +669,7 @@ uint64_t crc64_partial_clmul (const void *data, long len, uint64_t crc) {
 
   return crc64_barrett_reduction (D);
 }
+#endif /* x86 CLMUL CRC-64 */
 
 /* {{{ GF-32 */
 
@@ -729,6 +735,7 @@ void gf32_compute_powers_generic (unsigned *P, int size, unsigned poly) {
   assert (P[size - 1]);
 }
 
+#if defined(__x86_64__) || defined(__i386__)
 void gf32_compute_powers_clmul (unsigned *P, unsigned poly) {
   int n;
   assert (!((uintptr_t) P & 15l));
@@ -743,6 +750,7 @@ void gf32_compute_powers_clmul (unsigned *P, unsigned poly) {
     P += 4;
   }
 }
+#endif /* x86 gf32_compute_powers_clmul */
 
 unsigned gf32_combine_generic (unsigned *powers, unsigned crc1, int64_t len2) {
   unsigned *p = powers + 64;
@@ -756,6 +764,7 @@ unsigned gf32_combine_generic (unsigned *powers, unsigned crc1, int64_t len2) {
   return crc1;
 }
 
+#if defined(__x86_64__) || defined(__i386__)
 uint64_t gf32_combine_clmul (unsigned *powers, unsigned crc1, int64_t len2) {
   v2di D;
   FASTMOV_RMI32_TO_SSE(D, crc1);
@@ -780,6 +789,7 @@ uint64_t gf32_combine_clmul (unsigned *powers, unsigned crc1, int64_t len2) {
   D = __builtin_ia32_punpckhqdq128 (D, D);
   RETURN_SSE_UINT64(D);
 }
+#endif /* x86 CLMUL GF-32 */
 
 /* }}} */
 
@@ -798,6 +808,7 @@ static unsigned compute_crc32_combine_generic (unsigned crc1, unsigned crc2, int
   #undef N
 }
 
+#if defined(__x86_64__) || defined(__i386__)
 static unsigned compute_crc32_combine_clmul (unsigned crc1, unsigned crc2, int64_t len2) {
   static unsigned int crc32_powers[252] __attribute__ ((aligned(16)));
   if (len2 <= 0) {
@@ -822,6 +833,7 @@ static unsigned compute_crc32_combine_clmul (unsigned crc1, unsigned crc2, int64
   crc2 ^= (unsigned) (T >> 32);
   return (crc32_table0[crc1 & 0xff] ^ crc32_table1[(crc1 & 0xff00) >> 8] ^ crc32_table2[(crc1 & 0xff0000) >> 16] ^ crc32_table[crc1 >> 24]) ^ crc2;
 }
+#endif /* x86 CLMUL crc32_combine */
 
 /******************** GF-64 (reversed) ********************/
 
@@ -874,6 +886,7 @@ void crc64_init_power_buf (void) {
   assert (crc64_power_buf[125]);
 }
 
+#if defined(__x86_64__) || defined(__i386__)
 static uint64_t compute_crc64_combine_clmul (uint64_t crc1, uint64_t crc2, int64_t len2) {
   if (len2 <= 0) {
     return crc1;
@@ -901,6 +914,7 @@ static uint64_t compute_crc64_combine_clmul (uint64_t crc1, uint64_t crc2, int64
   }
   return crc64_barrett_reduction (D) ^ crc2;
 }
+#endif /* x86 CLMUL crc64_combine */
 
 static uint64_t compute_crc64_combine_generic (uint64_t crc1, uint64_t crc2, int64_t len2) {
   if (len2 <= 0) {
@@ -1035,6 +1049,7 @@ int crc32_check_and_repair (void *input, int l, unsigned *input_crc32, int force
 
 static void crc32_init (void) __attribute__ ((constructor));
 void crc32_init (void) {
+#if defined(__x86_64__) || defined(__i386__)
   kdb_cpuid_t *p = kdb_cpuid ();
   if (p->ecx & 2) {
     crc32_partial = crc32_partial_clmul;
@@ -1047,4 +1062,10 @@ void crc32_init (void) {
     compute_crc32_combine = compute_crc32_combine_generic;
     compute_crc64_combine = compute_crc64_combine_generic;
   }
+#else
+  crc32_partial = crc32_partial_generic;
+  crc64_partial = crc64_partial_one_table;
+  compute_crc32_combine = compute_crc32_combine_generic;
+  compute_crc64_combine = compute_crc64_combine_generic;
+#endif
 }

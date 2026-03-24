@@ -24,7 +24,7 @@ The proxy **must** pass `--nat-info LOCAL_IP:EXTERNAL_IP` to work behind Docker 
 - The `test_telethon_connects` test validates HMAC but can't complete auth_key exchange without real Telegram DC connectivity
 
 ### Building
-Cannot build natively on macOS (needs Linux OpenSSL). Use `docker build --target builder` to verify compilation.
+Cannot build natively on macOS (needs Linux OpenSSL). Use `docker build --target builder` to verify compilation. The Docker image supports both `linux/amd64` and `linux/arm64` — on Apple Silicon Macs, `docker build` produces a native ARM64 binary.
 
 ## Common Pitfalls
 - **Do not use `--no-verify` or force-push to master** without explicit approval

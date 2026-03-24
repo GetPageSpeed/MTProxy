@@ -47,7 +47,7 @@ DEPDIRS := ${DEP} $(addprefix ${DEP}/,${PROJECTS})
 ALLDIRS := ${DEPDIRS} ${OBJDIRS}
 
 
-.PHONY:	all clean lint tests test test-tls test-multi-secret test-ip-acl docker-image-amd64 docker-run-help-amd64
+.PHONY:	all clean lint tests test test-tls test-multi-secret test-ip-acl docker-image-amd64 docker-run-help-amd64 docker-image-arm64 docker-run-help-arm64
 
 EXELIST	:= ${EXE}/mtproto-proxy
 
@@ -139,6 +139,12 @@ docker-image-amd64:
 
 docker-run-help-amd64: docker-image-amd64
 	${DOCKER} run --rm --platform ${DOCKER_PLATFORM} --entrypoint /opt/mtproxy/mtproto-proxy ${DOCKER_TEST_IMAGE} 2>&1 | grep -q "Invoking engine"
+
+docker-image-arm64:
+	${DOCKER} buildx build --platform linux/arm64 --load -t mtproxy:test-arm64 .
+
+docker-run-help-arm64: docker-image-arm64
+	${DOCKER} run --rm --platform linux/arm64 --entrypoint /opt/mtproxy/mtproto-proxy mtproxy:test-arm64 2>&1 | grep -q "Invoking engine"
 
 tests: docker-run-help-amd64
 	@echo "Smoke test passed: amd64 image builds and binary starts (--help)."
