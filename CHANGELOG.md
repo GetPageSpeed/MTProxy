@@ -2,10 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
-## [3.0.15] - 2026-03-24
+## [3.0.16] - 2026-03-24
 
 ### Fixed
-- Fake-TLS emulation now replays all encrypted Application Data records from the backend, not just the first one — eliminates DPI fingerprinting via record-count mismatch ([#42](https://github.com/GetPageSpeed/MTProxy/issues/42))
+- **Critical**: v3.0.15 broke fake-TLS for backends that send multiple encrypted records — TDLib (all official Telegram clients) only reads the first record and the HMAC mismatch caused connection failures. Now emits a single record whose size equals the **total** of all backend records, giving a realistic encrypted payload size without breaking any client ([#42](https://github.com/GetPageSpeed/MTProxy/issues/42))
+- Auto-detect external IP for Docker NAT — proxy now discovers its public IP automatically, fixing silent connection failures when `EXTERNAL_IP` was not set
+- Added `--allow-skip-dh` flag (upstream default) for faster DC handshakes
+- E2E tests now use TelethonFakeTLS for real fake-TLS handshake verification
+
+## [3.0.15] - 2026-03-24 [YANKED]
+
+### Fixed
+- ~~Fake-TLS emulation now replays all encrypted Application Data records from the backend~~ — **BROKEN**: emitting multiple records is incompatible with TDLib's single-record ServerHello parser. Use v3.0.16 instead
 
 ## [3.0.14] - 2026-03-23
 
