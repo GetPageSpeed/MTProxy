@@ -142,3 +142,101 @@ jobs:
         python3 tests/test_tls_e2e.py
 
         kill $TLS_PID 2>/dev/null || true
+
+  test-asan:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libssl-dev zlib1g-dev git curl vim-common python3 python3-pip python3-venv
+
+    - name: Build with AddressSanitizer
+      run: |
+        make clean && make -j$(nproc) \
+          EXTRA_CFLAGS="-fsanitize=address -fno-omit-frame-pointer" \
+          EXTRA_LDFLAGS="-fsanitize=address"
+
+    - name: Setup and Run Proxy
+      run: |
+        mkdir -p mtproxy-run
+        cp objs/bin/mtproto-proxy mtproxy-run/
+        cd mtproxy-run
+
+        curl --connect-timeout 10 --max-time 30 --retry 3 -fsSL https://core.telegram.org/getProxySecret -o proxy-secret
+        curl --connect-timeout 10 --max-time 30 --retry 3 -fsSL https://core.telegram.org/getProxyConfig -o proxy-multi.conf
+
+        SECRET=$(head -c 16 /dev/urandom | xxd -ps)
+        echo "Using secret: $SECRET"
+        echo "MTPROXY_SECRET=$SECRET" >> $GITHUB_ENV
+
+        ASAN_OPTIONS=detect_leaks=0 \
+        ./mtproto-proxy -u nobody -p 8888 -H 8443 -S $SECRET \
+          --http-stats --aes-pwd proxy-secret proxy-multi.conf -M 1 \
+          2>asan.log &
+        echo $! > proxy.pid
+
+        sleep 5
+
+    - name: Run Tests
+      run: |
+        python3 -m venv .venv
+        source .venv/bin/activate
+        pip install requests
+        MTPROXY_HOST=localhost MTPROXY_PORT=8443 python3 tests/test_proxy.py
+
+    - name: Check for ASan Errors
+      if: always()
+      run: |
+        PID=$(cat mtproxy-run/proxy.pid 2>/dev/null || true)
+        if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
+          echo "Proxy still running (PID $PID) — no ASan crash during test"
+          kill "$PID" 2>/dev/null; wait "$PID" 2>/dev/null || true
+        else
+          echo "WARNING: Proxy exited early — possible ASan error"
+        fi
+
+        if [ -f mtproxy-run/asan.log ] && grep -q "AddressSanitizer" mtproxy-run/asan.log; then
+          echo "::error::AddressSanitizer errors detected"
+          cat mtproxy-run/asan.log
+          exit 1
+        fi
+        echo "No ASan errors detected"
+
+    - name: Verify ASan catches known heap overflow
+      run: |
+        # Re-introduce the CONN_INFO heap overflow fixed in a7e832e.
+        # This proves ASan is actually active — if the build config is broken
+        # (wrong flags, missing runtime), this step fails.
+        sed -i 's/LISTEN_CONN_INFO(LC)->window_clamp/CONN_INFO(LC)->window_clamp/' mtproto/mtproto-proxy.c
+
+        # Incremental rebuild — only mtproto-proxy.c recompiles
+        make -j$(nproc) \
+          EXTRA_CFLAGS="-fsanitize=address -fno-omit-frame-pointer" \
+          EXTRA_LDFLAGS="-fsanitize=address"
+        cp objs/bin/mtproto-proxy mtproxy-run/
+
+        cd mtproxy-run
+        ASAN_OPTIONS=detect_leaks=0 \
+        ./mtproto-proxy -u nobody -p 8888 -H 8443 -S $MTPROXY_SECRET \
+          --http-stats --aes-pwd proxy-secret proxy-multi.conf -M 1 \
+          2>asan-bug.log &
+        BUG_PID=$!
+        sleep 5
+        kill "$BUG_PID" 2>/dev/null; wait "$BUG_PID" 2>/dev/null || true
+
+        if grep -q "heap-buffer-overflow" asan-bug.log; then
+          echo "ASan correctly detected the known heap-buffer-overflow"
+        else
+          echo "::error::ASan did NOT detect the known heap overflow — sanitizer may be misconfigured"
+          cat asan-bug.log
+          exit 1
+        fi
+
+    - name: Restore source tree
+      if: always()
+      run: git checkout -- mtproto/mtproto-proxy.c
