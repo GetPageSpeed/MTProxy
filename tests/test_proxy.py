@@ -136,8 +136,8 @@ if __name__ == "__main__":
     # Check upstream connectivity first (informational)
     check_upstream_connectivity()
 
-    # Give the proxy time to start and establish ME relay connections
-    time.sleep(10)
+    # Small buffer — docker-compose healthcheck ensures the proxy is ready
+    time.sleep(2)
     
     stats_ok = test_http_stats()
     metrics_ok = test_prometheus_metrics()
