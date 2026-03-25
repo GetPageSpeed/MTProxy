@@ -31,6 +31,10 @@ COMMON_CFLAGS += -DHAVE_LIBUNWIND $(LIBUNWIND_CFLAGS)
 COMMON_LDFLAGS += $(LIBUNWIND_LDFLAGS)
 endif
 
+# Support additional flags (e.g. sanitizers): make EXTRA_CFLAGS="-fsanitize=address"
+COMMON_CFLAGS += $(EXTRA_CFLAGS)
+COMMON_LDFLAGS += $(EXTRA_LDFLAGS)
+
 # Architecture-specific CFLAGS
 ifeq ($(HOST_ARCH), x86_64)
 CFLAGS := $(COMMON_CFLAGS) -mpclmul -march=core2 -mfpmath=sse -mssse3 $(BITNESS_FLAGS)
