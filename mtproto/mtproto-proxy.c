@@ -2287,7 +2287,7 @@ void mtfront_pre_loop (void) {
       if (window_clamp) {
         listening_connection_job_t LC = Events[http_sfd[i]].data;
         assert (LC);
-        LISTEN_CONN_INFO(LC)->window_clamp = window_clamp;
+        CONN_INFO(LC)->window_clamp = window_clamp;
         if (setsockopt (http_sfd[i], IPPROTO_TCP, TCP_WINDOW_CLAMP, &window_clamp, 4) < 0) {
           vkprintf (0, "error while setting window size for socket #%d to %d: %m\n", http_sfd[i], window_clamp);
         }
