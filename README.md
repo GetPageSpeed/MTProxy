@@ -35,6 +35,7 @@ The table below compares it with the original and the two main third-party alter
 | Constant-time HMAC | No | Yes | — | Yes |
 | ***Censorship resistance*** | | | | |
 | Custom TLS backend (TCP splitting) | Yes | Yes | No | Yes |
+| Dynamic Record Sizing (DRS) | No | Yes | Yes | No |
 | Domain fronting / traffic mimicry | No | No | Yes | Yes |
 | SOCKS5 upstream proxy | No | No | Yes | Yes |
 | ***Access control*** | | | | |
@@ -323,6 +324,8 @@ Instead of mimicking a public website, you can run your own web server (e.g., ng
 - Valid MTProxy clients connect normally; all other traffic is forwarded to nginx
 
 **Anti-detection:** Every connection that fails MTProxy validation — wrong secret, expired timestamp, unknown SNI, replayed handshake, malformed ClientHello, or plain non-TLS traffic — is transparently forwarded to the backend rather than rejected with a TLS error. A censor probing the server with a standard browser sees a real HTTPS website, making the proxy indistinguishable from a normal web server under active probing.
+
+**Dynamic Record Sizing (DRS):** TLS connections automatically use graduated record sizes that mimic real HTTPS servers (Cloudflare, Go, Caddy): small MTU-sized records during TCP slow-start (~1450 bytes), ramping to ~4096 bytes, then max TLS payload (~16144 bytes). This defeats statistical traffic analysis that fingerprints proxy traffic by its uniform record sizes. No configuration needed — DRS activates automatically for all TLS connections.
 
 **Requirements:**
 - The backend must support **TLS 1.3** (MTProxy verifies this at startup)
