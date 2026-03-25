@@ -207,27 +207,42 @@ jobs:
         fi
         echo "No ASan errors detected"
 
-    - name: Verify ASan is active (self-test)
+    - name: Verify ASan catches known heap overflow
       run: |
-        # Build and run a trivial heap-buffer-overflow to prove the ASan
-        # toolchain is working. If flags are wrong or the runtime is
-        # missing, this step fails.
-        cat > /tmp/asan-selftest.c <<'CEOF'
-        #include <stdlib.h>
-        #include <string.h>
-        int main(void) {
-            char *p = malloc(8);
-            memset(p, 'A', 32);  /* 24 bytes past allocation */
-            free(p);
-            return 0;
-        }
-        CEOF
-        cc -fsanitize=address -fno-omit-frame-pointer -o /tmp/asan-selftest /tmp/asan-selftest.c
+        # Re-introduce the CONN_INFO heap overflow fixed in a7e832e to
+        # prove ASan catches real bugs in the proxy, not just toy programs.
+        #
+        # The bug: CONN_INFO(LC)->window_clamp writes at offset ~512 into
+        # an 80-byte listening_connection_info (allocated via malloc).
+        #
+        # Key: use -M 0 (no fork) so the bug triggers in the main process
+        # whose stderr we capture. With -M 1, the bug only fires in the
+        # child worker, but $! captures the parent PID.
+        sed -i 's/LISTEN_CONN_INFO(LC)->window_clamp/CONN_INFO(LC)->window_clamp/' mtproto/mtproto-proxy.c
 
-        if /tmp/asan-selftest 2>&1 | grep -q "heap-buffer-overflow"; then
-          echo "ASan self-test passed — sanitizer is active"
+        make -j$(nproc) \
+          EXTRA_CFLAGS="-fsanitize=address -fno-omit-frame-pointer" \
+          EXTRA_LDFLAGS="-fsanitize=address"
+        cp objs/bin/mtproto-proxy mtproxy-run/
+
+        cd mtproxy-run
+        ASAN_OPTIONS=detect_leaks=0 \
+        ./mtproto-proxy -u nobody -p 7888 -H 7443 -S $MTPROXY_SECRET \
+          --http-stats --aes-pwd proxy-secret proxy-multi.conf -M 0 \
+          >asan-bug.log 2>&1 &
+        BUG_PID=$!
+        sleep 5
+        kill "$BUG_PID" 2>/dev/null; wait "$BUG_PID" 2>/dev/null || true
+
+        if grep -q "heap-buffer-overflow" asan-bug.log; then
+          echo "ASan correctly detected the known heap-buffer-overflow"
         else
-          echo "::error::ASan self-test failed — sanitizer did not detect heap-buffer-overflow"
-          /tmp/asan-selftest 2>&1 || true
+          echo "::error::ASan did NOT detect the known heap overflow"
+          echo "--- asan-bug.log ---"
+          cat asan-bug.log
           exit 1
         fi
+
+    - name: Restore source tree
+      if: always()
+      run: git checkout -- mtproto/mtproto-proxy.c
