@@ -232,7 +232,8 @@ jobs:
           >asan-bug.log 2>&1 &
         BUG_PID=$!
         sleep 5
-        kill "$BUG_PID" 2>/dev/null; wait "$BUG_PID" 2>/dev/null || true
+        kill "$BUG_PID" 2>/dev/null || true
+        wait "$BUG_PID" 2>/dev/null || true
 
         if grep -q "heap-buffer-overflow" asan-bug.log; then
           echo "ASan correctly detected the known heap-buffer-overflow"
