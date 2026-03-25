@@ -9,14 +9,20 @@ permissions:
 
 jobs:
   auto-reply:
-    if: github.event.issue.user.type != 'Bot'
+    if: >-
+      github.event.issue.user.type != 'Bot' &&
+      github.event.issue.user.login != 'dvershinin'
     runs-on: ubuntu-latest
     steps:
-      - uses: peter-evans/create-or-update-comment@v4
+      - uses: actions/github-script@v7
         with:
-          issue-number: ${{ github.event.issue.number }}
-          body: |
-            Thank you for opening this issue.
+          script: |
+            const title = context.payload.issue.title || '';
+            const body = context.payload.issue.body || '';
+            const cyrillic = /[а-яА-ЯёЁ]/;
+            const isRussian = cyrillic.test(title) || cyrillic.test(body);
+
+            const en = `Thank you for opening this issue.
 
             **This project is maintained by a single developer in their free time.**
             Upstream TelegramMessenger/MTProxy is abandoned. This fork is the only actively maintained version.
@@ -24,9 +30,35 @@ jobs:
             Continued development depends on community support:
 
             - **[GitHub Sponsors](https://github.com/sponsors/dvershinin)** — sponsors' issues are prioritized
-            - **TON**: `UQBOGq_b3eL63Qfkj6ykoBibK3zGJDQzLK91v2q-UCY7BPeb` (send via @wallet in Telegram)
-            - **USDT (TRC-20)**: `TNVSj1QjZ5jqdaeshe7VCpXWo2S1n936Hj`
-            - **BTC**: `bc1qvxxldmanwggula7992uun5a2qxm65ej9h0unj7`
+            - **[YooMoney](https://yoomoney.ru/to/41001117748536)** — cards & wallets (Russia-friendly)
+            - **[Boosty](https://boosty.to/getpagespeed)**
+            - **TON**: \`UQBOGq_b3eL63Qfkj6ykoBibK3zGJDQzLK91v2q-UCY7BPeb\` (send via @wallet in Telegram)
+            - **USDT (TRC-20)**: \`TNVSj1QjZ5jqdaeshe7VCpXWo2S1n936Hj\`
+            - **BTC**: \`bc1qvxxldmanwggula7992uun5a2qxm65ej9h0unj7\`
             - **[GetPageSpeed RPM packages](https://www.getpagespeed.com/server-setup/mtproxy)** — production-ready install with support
 
-            Issues without community interest may be closed after 60 days of inactivity.
+            Issues without community interest may be closed after 60 days of inactivity.`;
+
+            const ru = `Спасибо за обращение.
+
+            **Этот проект поддерживается одним разработчиком в свободное время.**
+            Upstream TelegramMessenger/MTProxy заброшен. Этот форк — единственная активно поддерживаемая версия.
+
+            Развитие проекта зависит от поддержки сообщества:
+
+            - **[GitHub Sponsors](https://github.com/sponsors/dvershinin)** — issues спонсоров рассматриваются в приоритете
+            - **[ЮMoney](https://yoomoney.ru/to/41001117748536)** — карты и кошельки
+            - **[Boosty](https://boosty.to/getpagespeed)**
+            - **TON**: \`UQBOGq_b3eL63Qfkj6ykoBibK3zGJDQzLK91v2q-UCY7BPeb\` (через @wallet в Telegram)
+            - **USDT (TRC-20)**: \`TNVSj1QjZ5jqdaeshe7VCpXWo2S1n936Hj\`
+            - **BTC**: \`bc1qvxxldmanwggula7992uun5a2qxm65ej9h0unj7\`
+            - **[GetPageSpeed RPM-пакеты](https://www.getpagespeed.com/server-setup/mtproxy)** — установка для продакшена с поддержкой
+
+            Issues без активности сообщества могут быть закрыты через 60 дней.`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: isRussian ? ru : en
+            });

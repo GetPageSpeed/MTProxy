@@ -13,6 +13,8 @@ Most of these fixes aim for stable running of MTProxy in production without surp
 > | Channel | Details |
 > |---------|---------|
 > | GitHub Sponsors | **[Sponsor](https://github.com/sponsors/dvershinin)** |
+> | YooMoney | **[Donate](https://yoomoney.ru/to/41001117748536)** (cards & wallets, Russia-friendly) |
+> | Boosty | **[Subscribe](https://boosty.to/getpagespeed)** |
 > | TON | `UQBOGq_b3eL63Qfkj6ykoBibK3zGJDQzLK91v2q-UCY7BPeb` (via @wallet in Telegram) |
 > | USDT (TRC-20) | `TNVSj1QjZ5jqdaeshe7VCpXWo2S1n936Hj` |
 > | BTC | `bc1qvxxldmanwggula7992uun5a2qxm65ej9h0unj7` |
@@ -43,7 +45,7 @@ The table below compares it with the original and the two main third-party alter
 | Per-user unique IP limits | No | No | No | Yes |
 | Proxy Protocol v1/v2 | No | No | Yes | Yes |
 | ***Deployment*** | | | | |
-| Docker image | No | ~8 MB | ~3.5 MB | ~5 MB |
+| Docker image | ~57 MB | ~8 MB | ~3.5 MB | ~5 MB |
 | ARM64 / Apple Silicon | No | Yes | Yes | Yes |
 | IPv6 | Yes | Yes | Yes | Yes |
 | Multi-worker processes | Yes | Yes | — | — |
