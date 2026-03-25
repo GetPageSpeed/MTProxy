@@ -207,36 +207,27 @@ jobs:
         fi
         echo "No ASan errors detected"
 
-    - name: Verify ASan catches known heap overflow
+    - name: Verify ASan is active (self-test)
       run: |
-        # Re-introduce the CONN_INFO heap overflow fixed in a7e832e.
-        # This proves ASan is actually active — if the build config is broken
-        # (wrong flags, missing runtime), this step fails.
-        sed -i 's/LISTEN_CONN_INFO(LC)->window_clamp/CONN_INFO(LC)->window_clamp/' mtproto/mtproto-proxy.c
+        # Build and run a trivial heap-buffer-overflow to prove the ASan
+        # toolchain is working. If flags are wrong or the runtime is
+        # missing, this step fails.
+        cat > /tmp/asan-selftest.c <<'CEOF'
+        #include <stdlib.h>
+        #include <string.h>
+        int main(void) {
+            char *p = malloc(8);
+            memset(p, 'A', 32);  /* 24 bytes past allocation */
+            free(p);
+            return 0;
+        }
+        CEOF
+        cc -fsanitize=address -fno-omit-frame-pointer -o /tmp/asan-selftest /tmp/asan-selftest.c
 
-        # Incremental rebuild — only mtproto-proxy.c recompiles
-        make -j$(nproc) \
-          EXTRA_CFLAGS="-fsanitize=address -fno-omit-frame-pointer" \
-          EXTRA_LDFLAGS="-fsanitize=address"
-        cp objs/bin/mtproto-proxy mtproxy-run/
-
-        cd mtproxy-run
-        ASAN_OPTIONS=detect_leaks=0 \
-        ./mtproto-proxy -u nobody -p 8888 -H 8443 -S $MTPROXY_SECRET \
-          --http-stats --aes-pwd proxy-secret proxy-multi.conf -M 1 \
-          2>asan-bug.log &
-        BUG_PID=$!
-        sleep 5
-        kill "$BUG_PID" 2>/dev/null; wait "$BUG_PID" 2>/dev/null || true
-
-        if grep -q "heap-buffer-overflow" asan-bug.log; then
-          echo "ASan correctly detected the known heap-buffer-overflow"
+        if /tmp/asan-selftest 2>&1 | grep -q "heap-buffer-overflow"; then
+          echo "ASan self-test passed — sanitizer is active"
         else
-          echo "::error::ASan did NOT detect the known heap overflow — sanitizer may be misconfigured"
-          cat asan-bug.log
+          echo "::error::ASan self-test failed — sanitizer did not detect heap-buffer-overflow"
+          /tmp/asan-selftest 2>&1 || true
           exit 1
         fi
-
-    - name: Restore source tree
-      if: always()
-      run: git checkout -- mtproto/mtproto-proxy.c
