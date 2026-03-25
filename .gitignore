@@ -10,3 +10,4 @@ fuzz/*.o
 fuzz/crash-*
 fuzz/oom-*
 fuzz/timeout-*
+CLAUDE.md
