@@ -1,6 +1,6 @@
 # MTProxy by GetPageSpeed
 
-Simple MT-Proto proxy.
+Simple MT-Proto proxy. **[Telegram channel](https://t.me/mtproxy_dev)** for updates.
 
 **This is a fork of MTProxy which includes various improvements and fixes that upstream has not merged due to abandonding their repository.
 Most of these fixes aim for stable running of MTProxy in production without surprises.**
@@ -13,6 +13,7 @@ Most of these fixes aim for stable running of MTProxy in production without surp
 > | Channel | Details |
 > |---------|---------|
 > | GitHub Sponsors | **[Sponsor](https://github.com/sponsors/dvershinin)** |
+> | Tribute | **[Donate via Telegram](https://t.me/tribute/app?startapp=dHGA)** (cards, Russia-friendly) |
 > | YooMoney | **[Donate](https://yoomoney.ru/to/41001117748536)** (cards & wallets, Russia-friendly) |
 > | Boosty | **[Subscribe](https://boosty.to/getpagespeed)** |
 > | TON | `UQBOGq_b3eL63Qfkj6ykoBibK3zGJDQzLK91v2q-UCY7BPeb` (via @wallet in Telegram) |
