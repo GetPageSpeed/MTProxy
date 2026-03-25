@@ -38,7 +38,33 @@ When `--direct` is passed (or `DIRECT_MODE=true` in Docker), the proxy connects 
 - Incompatible with `-P` (proxy tag) — ad tags require ME relays
 - `proxy-multi.conf` and `proxy-secret` are not needed in direct mode
 
+### Live Proxy Test
+- `tests/test_live_proxy.py` — Telethon-based diagnostic for testing a running proxy instance (TCP, obfuscated2 handshake, multi-DC)
+- Works with non-TLS proxies (`dd` prefix, `ConnectionTcpMTProxyRandomizedIntermediate`)
+- Usage: `python3 tests/test_live_proxy.py --host HOST --port PORT --secret SECRET`
+
+## RPM Packaging
+
+RPM spec lives in a **separate repo**: `~/Projects/mtproxy-rpm` (Bitbucket: `danila_vershinin/mtproxy-rpm`).
+
+### proxy-multi.conf Lifecycle (RPM)
+1. **Build time**: `getProxyConfig` is fetched and baked in as `proxy-multi.conf-initial`
+2. **Install**: RPM creates symlinks `proxy-multi.conf → proxy-multi.conf-initial`
+3. **Post-install**: `%post` script downloads fresh config, replaces symlink with real file
+4. **Runtime**: `/etc/cron.daily/mtproxy` refreshes the config daily and reloads the service
+
+**Gotcha**: If the `%post` download fails (network issue during install), the proxy runs with the build-time config which may have stale ME relay addresses. Telegram rotates relay IPs/ports frequently — a config even hours old can have unreachable addresses.
+
+### Production Instance
+- Host: `mtproxy.getpagespeed.com` (SSH: `centos@m1.sgweddingfavors.com`, then sudo)
+- Port: 8444, stats: 8888
+- Mode: ME relay (obfuscated2 + proxy tag), no fake-TLS
+- Config: `/etc/mtproxy/mtproxy.params`, `/etc/mtproxy/secret`
+- Data: `/usr/share/mtproxy/proxy-{secret,multi.conf}`
+- Service: `systemctl {status,restart,reload} mtproxy`
+
 ## Common Pitfalls
 - **Do not use `--no-verify` or force-push to master** without explicit approval
 - The `proxy-secret` (aes-pwd) file is baked into the Docker image at build time — not fetched at runtime
 - `proxy-multi.conf` is refreshed every 6 hours via cron inside the container (not in direct mode)
+- **RPM upgrades reset `proxy-multi.conf`** to a symlink to the build-time snapshot — the `%post` script must download a fresh copy
