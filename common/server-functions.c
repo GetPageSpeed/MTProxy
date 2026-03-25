@@ -53,7 +53,9 @@
 #include <string.h>
 #include <sys/resource.h>
 #include <sys/wait.h>
+#ifdef HAVE_LIBUNWIND
 #include <ucontext.h>
+#endif
 #include <unistd.h>
 #include <pthread.h>
 
@@ -250,32 +252,37 @@ void engine_set_terminal_attributes (void) {}
 void extended_debug_handler (int sig, siginfo_t *info, void *cont) {
   ksignal (sig, SIG_DFL);
 
-  /* Print faulting address and interrupted PC for crash diagnosis */
+#ifdef HAVE_LIBUNWIND
+  /* Print faulting address and interrupted PC for crash diagnosis.
+     Only in debug/test builds (HAVE_LIBUNWIND implies DEBUG_TOOLS). */
   if (info) {
     char buf[256];
     int len = snprintf (buf, sizeof (buf),
       "\n*** Signal %d, faulting address %p ***\n", sig, info->si_addr);
     if (len > 0) kwrite (2, buf, len);
   }
-#if defined(__x86_64__) || defined(__aarch64__)
+#if defined(__x86_64__)
   if (cont) {
     ucontext_t *uc = (ucontext_t *)cont;
     char buf[256];
-    int len;
-#if defined(__x86_64__)
-    len = snprintf (buf, sizeof (buf), "RIP=0x%llx RSP=0x%llx RBP=0x%llx\n",
+    int len = snprintf (buf, sizeof (buf), "RIP=0x%llx RSP=0x%llx RBP=0x%llx\n",
       (unsigned long long)uc->uc_mcontext.gregs[REG_RIP],
       (unsigned long long)uc->uc_mcontext.gregs[REG_RSP],
       (unsigned long long)uc->uc_mcontext.gregs[REG_RBP]);
+    if (len > 0) kwrite (2, buf, len);
+  }
 #elif defined(__aarch64__)
-    len = snprintf (buf, sizeof (buf), "PC=0x%lx SP=0x%lx LR=0x%lx\n",
+  if (cont) {
+    ucontext_t *uc = (ucontext_t *)cont;
+    char buf[256];
+    int len = snprintf (buf, sizeof (buf), "PC=0x%lx SP=0x%lx LR=0x%lx\n",
       (unsigned long)uc->uc_mcontext.pc,
       (unsigned long)uc->uc_mcontext.sp,
       (unsigned long)uc->uc_mcontext.regs[30]);
-#endif
     if (len > 0) kwrite (2, buf, len);
   }
 #endif
+#endif /* HAVE_LIBUNWIND */
 
   print_backtrace ();
 
