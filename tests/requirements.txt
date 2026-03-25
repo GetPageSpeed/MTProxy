@@ -1,3 +1,4 @@
 requests
 telethon
 TelethonFakeTLS
+cryptography
