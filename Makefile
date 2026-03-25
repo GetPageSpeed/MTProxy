@@ -73,7 +73,7 @@ LIB_OBJS_NORMAL := \
 	${OBJ}/net/net-config.o ${OBJ}/net/net-crypto-aes.o ${OBJ}/net/net-crypto-dh.o ${OBJ}/net/net-timers.o \
 	${OBJ}/net/net-connections.o \
 	${OBJ}/net/net-rpc-targets.o \
-	${OBJ}/net/net-tcp-connections.o ${OBJ}/net/net-tcp-rpc-common.o ${OBJ}/net/net-tcp-rpc-client.o ${OBJ}/net/net-tcp-rpc-server.o \
+	${OBJ}/net/net-tcp-connections.o ${OBJ}/net/net-tcp-drs.o ${OBJ}/net/net-tcp-rpc-common.o ${OBJ}/net/net-tcp-rpc-client.o ${OBJ}/net/net-tcp-rpc-server.o \
 	${OBJ}/net/net-http-server.o ${OBJ}/net/net-http-parse.o ${OBJ}/net/net-tls-parse.o ${OBJ}/net/net-ip-acl.o \
 	${OBJ}/common/tl-parse.o ${OBJ}/common/common-stats.o \
 	${OBJ}/engine/engine.o ${OBJ}/engine/engine-signals.o \

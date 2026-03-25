@@ -47,6 +47,7 @@
 #include "net/net-crypto-aes.h"
 #include "net/net-events.h"
 #include "net/net-tcp-connections.h"
+#include "net/net-tcp-drs.h"
 #include "net/net-tcp-rpc-ext-server.h"
 #include "net/net-tls-parse.h"
 #include "net/net-thread.h"
@@ -87,6 +88,26 @@ conn_type_t ct_tcp_rpc_ext_server = {
   .crypto_init = aes_crypto_ctr128_init,
   .crypto_free = aes_crypto_free,
   .crypto_encrypt_output = cpu_tcp_aes_crypto_ctr128_encrypt_output,
+  .crypto_decrypt_input = cpu_tcp_aes_crypto_ctr128_decrypt_input,
+  .crypto_needed_output_bytes = cpu_tcp_aes_crypto_ctr128_needed_output_bytes,
+};
+
+/* DRS variant: uses dynamic record sizing for TLS connections */
+conn_type_t ct_tcp_rpc_ext_server_drs = {
+  .magic = CONN_FUNC_MAGIC,
+  .flags = C_RAWMSG,
+  .title = "rpc_ext_server_drs",
+  .init_accepted = tcp_rpcs_ext_init_accepted,
+  .parse_execute = tcp_rpcs_compact_parse_execute,
+  .close = tcp_rpcs_close_connection,
+  .flush = tcp_rpc_flush,
+  .write_packet = tcp_rpc_write_packet_compact,
+  .connected = server_failed,
+  .wakeup = tcp_rpcs_wakeup,
+  .alarm = tcp_rpcs_ext_alarm,
+  .crypto_init = aes_crypto_ctr128_init,
+  .crypto_free = aes_crypto_free,
+  .crypto_encrypt_output = cpu_tcp_aes_crypto_ctr128_encrypt_output_drs,
   .crypto_decrypt_input = cpu_tcp_aes_crypto_ctr128_decrypt_input,
   .crypto_needed_output_bytes = cpu_tcp_aes_crypto_ctr128_needed_output_bytes,
 };
@@ -178,6 +199,22 @@ conn_type_t ct_direct_client = {
   .crypto_needed_output_bytes = cpu_tcp_aes_crypto_ctr128_needed_output_bytes,
 };
 
+/* DRS variant of client-side relay for TLS connections */
+conn_type_t ct_direct_client_drs = {
+  .magic = CONN_FUNC_MAGIC,
+  .flags = C_RAWMSG,
+  .title = "direct_client_drs",
+  .parse_execute = tcp_direct_client_parse_execute,
+  .close = tcp_direct_close,
+  .write_packet = tcp_proxy_pass_write_packet,
+  .connected = server_noop,
+  .crypto_init = aes_crypto_ctr128_init,
+  .crypto_free = aes_crypto_free,
+  .crypto_encrypt_output = cpu_tcp_aes_crypto_ctr128_encrypt_output_drs,
+  .crypto_decrypt_input = cpu_tcp_aes_crypto_ctr128_decrypt_input,
+  .crypto_needed_output_bytes = cpu_tcp_aes_crypto_ctr128_needed_output_bytes,
+};
+
 /* DC-side relay: its own AES-CTR crypto for the proxy→DC obfuscated2 connection */
 conn_type_t ct_direct_dc = {
   .magic = CONN_FUNC_MAGIC,
@@ -217,6 +254,18 @@ static int tcp_direct_relay (connection_job_t C) {
 }
 
 static int tcp_direct_client_parse_execute (connection_job_t C) {
+  struct connection_info *c = CONN_INFO(C);
+  if (!c->extra) {
+    fail_connection (C, -1);
+    return 0;
+  }
+  /* Don't relay until the DC connection has sent its obfuscated2 init.
+     The connected callback sets crypto when it's done and signals us. */
+  struct connection_info *dc = CONN_INFO((connection_job_t) c->extra);
+  if (!dc->crypto) {
+    vkprintf (2, "direct client: DC not ready yet, deferring %d bytes\n", c->in.total_bytes);
+    return NEED_MORE_BYTES;
+  }
   return tcp_direct_relay (C);
 }
 
@@ -227,7 +276,7 @@ static int tcp_direct_dc_parse_execute (connection_job_t C) {
 static int tcp_direct_close (connection_job_t C, int who) {
   struct connection_info *c = CONN_INFO(C);
   vkprintf (1, "closing direct connection #%d %s:%d -> %s:%d\n", c->fd, show_our_ip (C), c->our_port, show_remote_ip (C), c->remote_port);
-  if (c->type == &ct_direct_client && direct_dc_connections_active > 0) {
+  if ((c->type == &ct_direct_client || c->type == &ct_direct_client_drs) && direct_dc_connections_active > 0) {
     direct_dc_connections_active--;
   }
   if (c->extra) {
@@ -309,17 +358,12 @@ static int tcp_direct_dc_connected (connection_job_t C) {
   T->read_aeskey = evp_cipher_ctx_init (EVP_aes_256_ctr (), key_data.read_key, key_data.read_iv, 1);
   c->crypto = T;
 
-  /* Flush any pending data from client that arrived before DC connected */
+  /* Flush deferred client data: the client's parse_execute returned
+     NEED_MORE_BYTES while waiting for this DC init, which set skip_bytes.
+     Reset it so the reader re-enters parse_execute on the next signal. */
   if (c->extra) {
-    connection_job_t client_conn = (connection_job_t) c->extra;
-    struct connection_info *client_info = CONN_INFO(client_conn);
-    if (client_info->in.total_bytes > 0) {
-      struct raw_message *r = malloc (sizeof (*r));
-      rwm_move (r, &client_info->in);
-      rwm_init (&client_info->in, 0);
-      vkprintf (3, "direct relay %d pending client bytes to DC\n", r->total_bytes);
-      mpq_push_w (c->out_queue, PTR_MOVE(r), 0);
-    }
+    CONN_INFO((connection_job_t) c->extra)->skip_bytes = 0;
+    job_signal (JOB_REF_CREATE_PASS (c->extra), JS_RUN);
   }
 
   return 0;
@@ -340,7 +384,13 @@ static int direct_connect_to_dc (connection_job_t C, int target_dc) {
   vkprintf (1, "direct mode: routing client (fd=%d) to DC %d (%s:%d)\n",
             c->fd, target_dc, inet_ntoa (*(struct in_addr *)&dc->ipv4), dc->port);
 
-  assert (check_conn_functions (&ct_direct_dc, 0) >= 0);
+  static int direct_types_checked;
+  if (!direct_types_checked) {
+    assert (check_conn_functions (&ct_direct_dc, 0) >= 0);
+    assert (check_conn_functions (&ct_direct_client, 0) >= 0);
+    assert (check_conn_functions (&ct_direct_client_drs, 0) >= 0);
+    direct_types_checked = 1;
+  }
 
   int cfd = client_socket (dc->ipv4, dc->port, 0);
   if (cfd < 0) {
@@ -364,7 +414,14 @@ static int direct_connect_to_dc (connection_job_t C, int target_dc) {
   TCP_RPC_DATA(EJ)->extra_int4 = target_dc;
 
   /* Switch client to direct relay mode (keeps existing AES crypto) */
-  c->type = &ct_direct_client;
+  if (c->flags & C_IS_TLS) {
+    c->type = &ct_direct_client_drs;
+    struct drs_state *drs = DRS_STATE (C);
+    drs->record_index = 0;
+    drs->last_record_time = precise_now;
+  } else {
+    c->type = &ct_direct_client;
+  }
   c->extra = job_incref (EJ);
 
   /* Link DC connection back to client */
@@ -1529,6 +1586,20 @@ int tcp_rpcs_compact_parse_execute (connection_job_t C) {
       }
 
       if (ok) {
+        /* Activate DRS for TLS connections */
+        if (c->flags & C_IS_TLS) {
+          static int drs_types_checked;
+          if (!drs_types_checked) {
+            assert (check_conn_functions (&ct_tcp_rpc_ext_server_drs, 0) >= 0);
+            assert (check_conn_functions (&ct_direct_client_drs, 0) >= 0);
+            drs_types_checked = 1;
+          }
+          c->type = &ct_tcp_rpc_ext_server_drs;
+          struct drs_state *drs = DRS_STATE (C);
+          drs->record_index = 0;
+          drs->last_record_time = precise_now;
+          vkprintf (1, "DRS activated for TLS connection\n");
+        }
         if (direct_mode) {
           return direct_connect_to_dc (C, D->extra_int4);
         }
