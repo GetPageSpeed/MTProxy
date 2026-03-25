@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.2.0] - 2026-03-25
+
+### Added
+- Dynamic Record Sizing (DRS) for TLS transport — auto-activates on all TLS connections, no flag needed. Record sizes mimic real HTTPS servers (1450→4096→16144 bytes with ±100 noise), making proxy traffic statistically indistinguishable from real HTTPS ([#50](https://github.com/GetPageSpeed/MTProxy/issues/50))
+- E2E test for TLS data-after-handshake burst (validates direct+TLS race condition fix)
+- Standalone DRS E2E test script (`tests/test_drs_e2e.py`) for production verification with Telethon
+
+### Fixed
+- Direct mode: race condition where client data was relayed before obfuscated2 init, causing DC rejection
+- Direct mode: missing `check_conn_functions` for `ct_direct_client` caused crash on TLS+direct connections
+
 ## [3.1.0] - 2026-03-25
 
 Consolidates changes from v3.0.17 through v3.0.22.
