@@ -3,7 +3,10 @@ FROM alpine:3.21 AS builder
 
 # Install build dependencies
 # linux-headers: provides <linux/futex.h> used by mp-queue.c and jobs.c
-RUN apk add --no-cache build-base openssl-dev zlib-dev linux-headers git
+# DEBUG_TOOLS=1: adds libunwind for stack traces in crash dumps (test/CI only)
+ARG DEBUG_TOOLS=0
+RUN apk add --no-cache build-base openssl-dev zlib-dev linux-headers git \
+    $([ "$DEBUG_TOOLS" = "1" ] && echo "libunwind-dev")
 
 # Set working directory
 WORKDIR /src
@@ -24,7 +27,9 @@ FROM alpine:3.21
 # zlib: required by mtproto-proxy (-lz)
 # iproute2: ip command for local IP detection in NAT setup
 # ca-certificates: TLS certificate verification
-RUN apk add --no-cache curl ca-certificates openssl zlib iproute2
+ARG DEBUG_TOOLS=0
+RUN apk add --no-cache curl ca-certificates openssl zlib iproute2 \
+    $([ "$DEBUG_TOOLS" = "1" ] && echo "libunwind")
 
 # Create user for running the proxy
 RUN adduser -D -H -s /sbin/nologin mtproxy

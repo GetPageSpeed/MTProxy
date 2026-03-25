@@ -37,6 +37,9 @@
 #include <errno.h>
 #ifdef __GLIBC__
 #include <execinfo.h>
+#elif defined(HAVE_LIBUNWIND)
+#define UNW_LOCAL_ONLY
+#include <libunwind.h>
 #endif
 #include <fcntl.h>
 #include <getopt.h>
@@ -175,6 +178,24 @@ void print_backtrace (void) {
   int nptrs = backtrace (buffer, 64);
   kwrite (2, "\n------- Stack Backtrace -------\n", 33);
   backtrace_symbols_fd (buffer, nptrs, 2);
+  kwrite (2, "-------------------------------\n", 32);
+#elif defined(HAVE_LIBUNWIND)
+  kwrite (2, "\n------- Stack Backtrace -------\n", 33);
+  unw_cursor_t cursor;
+  unw_context_t context;
+  unw_getcontext (&context);
+  unw_init_local (&cursor, &context);
+  while (unw_step (&cursor) > 0) {
+    unw_word_t offset, pc;
+    char fname[128];
+    unw_get_reg (&cursor, UNW_REG_IP, &pc);
+    fname[0] = '\0';
+    unw_get_proc_name (&cursor, fname, sizeof (fname), &offset);
+    char line[256];
+    int len = snprintf (line, sizeof (line), "  %s (+0x%lx) [0x%lx]\n",
+                        fname[0] ? fname : "???", (long)offset, (long)pc);
+    if (len > 0) kwrite (2, line, len);
+  }
   kwrite (2, "-------------------------------\n", 32);
 #else
   kwrite (2, "\n(stack trace unavailable on musl)\n", 35);
