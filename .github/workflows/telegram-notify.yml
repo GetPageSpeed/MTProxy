@@ -1,0 +1,63 @@
+name: Telegram Notifications
+
+on:
+  release:
+    types: [published]
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        with:
+          script: |
+            const token = process.env.TELEGRAM_BOT_TOKEN;
+            const chatId = process.env.TELEGRAM_CHAT_ID;
+            if (!token || !chatId) return;
+
+            let text = '';
+            const event = context.eventName;
+            const repo = context.payload.repository.full_name;
+
+            if (event === 'release') {
+              const r = context.payload.release;
+              const body = r.body ? r.body.substring(0, 500) : '';
+              text = `🚀 <b>New Release: ${r.tag_name}</b>\n\n${body}\n\n<a href="${r.html_url}">Release notes</a> | <a href="https://github.com/${repo}">GitHub</a>`;
+            } else if (event === 'issues' && context.payload.action === 'opened') {
+              // Skip bot-created issues
+              if (context.payload.issue.user.type === 'Bot') return;
+              const i = context.payload.issue;
+              text = `📋 <b>New Issue #${i.number}</b>: ${i.title}\n\nby ${i.user.login}\n<a href="${i.html_url}">View issue</a>`;
+            } else if (event === 'issue_comment' && context.payload.action === 'created') {
+              // Only post maintainer comments
+              const c = context.payload.comment;
+              if (c.user.login !== 'dvershinin') return;
+              // Skip auto-reply bot comments
+              if (c.user.type === 'Bot') return;
+              const i = context.payload.issue;
+              const snippet = c.body.substring(0, 300);
+              text = `💬 <b>Comment on #${i.number}</b>: ${i.title}\n\n${snippet}\n\n<a href="${c.html_url}">View comment</a>`;
+            }
+
+            if (!text) return;
+
+            await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: chatId,
+                text: text,
+                parse_mode: 'HTML',
+                disable_web_page_preview: true
+              })
+            });
