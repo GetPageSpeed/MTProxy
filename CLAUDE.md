@@ -55,6 +55,8 @@ When `--direct` is passed (or `DIRECT_MODE=true` in Docker), the proxy connects 
 - Incompatible with `-P` (proxy tag) — ad tags require ME relays
 - `proxy-multi.conf` and `proxy-secret` are not needed in direct mode
 - **Data race (fixed):** client data can arrive before `tcp_direct_dc_connected` sends the obfuscated2 init. `tcp_direct_client_parse_execute` defers relay until `dc->crypto` is set; the connected callback resets `skip_bytes` and signals the client.
+- **DC init must match client transport tag**: The obfuscated2 init sent to the DC must use the same transport tag (bytes 56-59) as the client used. The client's tag is stored in `D->extra_int3` and propagated through `direct_connect_to_dc` to `tcp_direct_dc_connected`. Hardcoding `0xeeeeeeee` broke all connections since clients always use `0xdddddddd`.
+- **DC init must bypass crypto layer**: The 64-byte init is written to `c->out_p` (post-crypto buffer), NOT `c->out`. Writing to `c->out` would cause `crypto_encrypt_output` to double-encrypt the init, making it unreadable by the DC.
 - **Connection lifecycle callbacks differ by mode**: Non-direct uses `mtproto_ext_rpc_ready`/`mtproto_ext_rpc_close` (in `mtproto-proxy.c`). Direct uses `direct_connect_to_dc`/`tcp_direct_close` (in `net-tcp-rpc-ext-server.c`). Note: `mtproto_proxy_rpc_ready`/`close` are declared but dead code — do not use them.
 
 ### Live Proxy Test
