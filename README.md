@@ -162,7 +162,7 @@ head -c 16 /dev/urandom | xxd -ps
 - `nobody` is the username. `mtproto-proxy` calls `setuid()` to drop privilegies.
 - `443` is the port, used by clients to connect to the proxy.
 - `8888` is the local port for statistics (requires `--http-stats`). Like `curl http://localhost:8888/stats`. Stats are accessible from private networks (loopback, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) but not from public IPs.
-- `<secret>` is the secret generated at step 3. Also you can set multiple secrets: `-S <secret1> -S <secret2>`. Each secret can have an optional label: `-S <secret>:family -S <secret>:friends`. Labels appear in logs and stats instead of raw secrets, making it easy to identify which secret a connection used.
+- `<secret>` is the secret generated at step 3. Also you can set multiple secrets: `-S <secret1> -S <secret2>`. Each secret can have an optional label: `-S <secret>:family -S <secret>:friends`. Labels appear in logs and stats instead of raw secrets, making it easy to identify which secret a connection used. You can also set a per-secret connection limit: `-S <secret>:family:1000` (see [Per-Secret Connection Limits](#per-secret-connection-limits)).
 - `--aes-pwd proxy-secret` points to the `proxy-secret` file downloaded at step 1, which contains the encryption key used for MTProto key exchange with Telegram DCs.
 - `proxy-secret` and `proxy-multi.conf` are obtained at steps 1 and 2.
 - `1` is the number of workers. You can increase the number of workers, if you have a powerful server.
@@ -487,6 +487,7 @@ docker run -d \
   - If both `SECRET` and `SECRET_N` are set, all are combined
   - Maximum 16 secrets (binary limit)
 - `SECRET_LABEL_1`, `SECRET_LABEL_2`, ...: Optional labels for numbered secrets (e.g. `SECRET_LABEL_1=family`). See [Secret Labels](#secret-labels)
+- `SECRET_LIMIT_1`, `SECRET_LIMIT_2`, ...: Optional per-secret connection limits (e.g. `SECRET_LIMIT_1=1000`). See [Per-Secret Connection Limits](#per-secret-connection-limits)
 - `PORT`: Port for client connections (default: 443)
 - `STATS_PORT`: Port for statistics endpoint (default: 8888)
 - `WORKERS`: Number of worker processes (default: 1)
@@ -577,6 +578,47 @@ Labels appear in:
 If no label is given, secrets are auto-labeled `secret_0`, `secret_1`, etc.
 
 Label rules: max 32 characters, alphanumeric plus `_` and `-` only.
+
+#### Per-Secret Connection Limits
+
+Prevent a leaked or widely-shared secret from consuming all proxy resources by setting
+a maximum number of concurrent connections per secret:
+
+```bash
+# CLI: append :LIMIT after the label
+./mtproto-proxy ... -S cafe...90ab:family:1000 -S dead...90ef:public:200
+
+# Without a label, use an empty label field
+./mtproto-proxy ... -S cafe...90ab::500
+
+# Docker: numbered env vars
+SECRET_1=cafe1234567890abcdef1234567890ab
+SECRET_LABEL_1=family
+SECRET_LIMIT_1=1000
+SECRET_2=dead1234567890abcdef1234567890ef
+SECRET_LABEL_2=public
+SECRET_LIMIT_2=200
+
+# Docker: inline (comma-separated)
+SECRET=cafe...90ab:family:1000,dead...90ef:public:200
+```
+
+When the limit is reached, new connections using that secret are rejected:
+- **Fake-TLS (EE mode)**: rejected during the TLS handshake — the client is proxied to the
+  configured domain, so it sees a normal website (indistinguishable from a non-proxy server).
+- **Obfuscated2 (DD mode)**: the connection is silently dropped.
+
+Existing connections are not affected. Other secrets continue operating normally.
+
+**Multi-worker note**: with `-M N` workers, each worker enforces `limit / N` independently.
+For single-worker mode (`-M 0` or `-M 1`), the limit is exact.
+
+Limits appear in stats and Prometheus metrics:
+- **Stats** (`/stats`): `secret_family_limit	1000`, `secret_family_rejected	42`
+- **Prometheus** (`/metrics`): `mtproxy_secret_connection_limit{secret="family"} 1000`,
+  `mtproxy_secret_connections_rejected_total{secret="family"} 42`
+
+Secrets without a limit are unlimited (the default, backward-compatible behavior).
 
 And reference it in your `docker-compose.yml`:
 ```yaml

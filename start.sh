@@ -65,11 +65,16 @@ while [ "$_i" -le 16 ]; do
     if [ -n "$_val" ]; then
         eval "_lbl=\${SECRET_LABEL_${_i}:-}"
         _lbl=$(printf '%s' "$_lbl" | tr -d '[:space:]')
-        if [ -n "$_lbl" ]; then
-            set -- "$@" "${_val}:${_lbl}"
-        else
-            set -- "$@" "$_val"
+        eval "_lim=\${SECRET_LIMIT_${_i}:-}"
+        _lim=$(printf '%s' "$_lim" | tr -d '[:space:]')
+        _suffix=""
+        if [ -n "$_lbl" ] || [ -n "$_lim" ]; then
+            _suffix=":${_lbl}"
         fi
+        if [ -n "$_lim" ]; then
+            _suffix="${_suffix}:${_lim}"
+        fi
+        set -- "$@" "${_val}${_suffix}"
     fi
     _i=$((_i + 1))
 done
@@ -164,9 +169,9 @@ echo ""
 echo "===== Connection Links ====="
 _host="${EXTERNAL_IP:-<YOUR_SERVER_IP>}"
 for _s in "$@"; do
-    # Strip :LABEL suffix for URLs (labels are for the proxy, not for clients)
+    # Strip :LABEL:LIMIT suffix for URLs (labels/limits are for the proxy, not for clients)
     _secret_hex=$(printf '%s' "$_s" | cut -d: -f1)
-    _label=$(printf '%s' "$_s" | grep -o ':.*' | cut -c2- || true)
+    _label=$(printf '%s' "$_s" | cut -d: -f2 -s)
     if [ -n "$EE_DOMAIN" ]; then
         _domain_only=$(printf '%s' "$EE_DOMAIN" | cut -d: -f1)
         _domain_hex=$(printf '%s' "$_domain_only" | od -An -tx1 | tr -d ' \n')

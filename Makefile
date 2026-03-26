@@ -59,7 +59,7 @@ DEPDIRS := ${DEP} $(addprefix ${DEP}/,${PROJECTS})
 ALLDIRS := ${DEPDIRS} ${OBJDIRS}
 
 
-.PHONY:	all clean lint tests test test-tls test-multi-secret test-ip-acl docker-image-amd64 docker-run-help-amd64 docker-image-arm64 docker-run-help-arm64 fuzz fuzz-run
+.PHONY:	all clean lint tests test test-tls test-multi-secret test-secret-limit test-ip-acl docker-image-amd64 docker-run-help-amd64 docker-image-arm64 docker-run-help-arm64 fuzz fuzz-run
 
 EXELIST	:= ${EXE}/mtproto-proxy
 
@@ -197,6 +197,16 @@ test-multi-secret:
 	@docker compose -f tests/docker-compose.multi-secret-test.yml logs mtproxy 2>&1 | grep -q "t.me/proxy" || \
 		(echo "FAIL: No connection links found in proxy logs"; exit 1)
 	docker compose -f tests/docker-compose.multi-secret-test.yml down
+
+test-secret-limit:
+	@export MTPROXY_SECRET_1=$$(head -c 16 /dev/urandom | xxd -ps) && \
+	export MTPROXY_SECRET_2=$$(head -c 16 /dev/urandom | xxd -ps) && \
+	echo "Using secrets: $$MTPROXY_SECRET_1 (unlimited), $$MTPROXY_SECRET_2 (limit=5)" && \
+	timeout 300s docker compose -f tests/docker-compose.secret-limit-test.yml up --build --exit-code-from tester || \
+		(echo "Secret limit test timed out or failed"; \
+		docker compose -f tests/docker-compose.secret-limit-test.yml logs mtproxy; \
+		docker compose -f tests/docker-compose.secret-limit-test.yml down; exit 1)
+	docker compose -f tests/docker-compose.secret-limit-test.yml down
 
 test-ip-acl:
 	@if [ -z "$$MTPROXY_SECRET" ]; then \
