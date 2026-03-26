@@ -55,7 +55,7 @@ jobs:
         export MTPROXY_SECRET=$(head -c 16 /dev/urandom | xxd -ps)
         make test-tls
 
-  test-direct:
+  test-native-build:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
@@ -87,30 +87,26 @@ jobs:
 
     - name: Setup and Run Proxy
       run: |
-        # Debug: Check connectivity to Telegram DC
         echo "Checking connectivity to Telegram DC (149.154.175.50:443)..."
         nc -zv 149.154.175.50 443 || echo "Failed to connect to Telegram DC 149.154.175.50:443"
-        
+
         mkdir -p mtproxy-run
         cp objs/bin/mtproto-proxy mtproxy-run/
-        
+
         cd mtproxy-run
-        
-        # Download config/secret 
+
+        # Download config/secret (ME relay mode)
         curl --connect-timeout 10 --max-time 30 --retry 3 -fsSL https://core.telegram.org/getProxySecret -o proxy-secret
         curl --connect-timeout 10 --max-time 30 --retry 3 -fsSL https://core.telegram.org/getProxyConfig -o proxy-multi.conf
-        
-        # Generate a random secret for testing using xxd (from vim-common)
+
         SECRET=$(head -c 16 /dev/urandom | xxd -ps)
         echo "Using secret: $SECRET"
-        
-        # Start proxy in background (use port 8443 to avoid permission issues)
+
+        # ME relay mode proxy
         ./mtproto-proxy -u nobody -p 8888 -H 8443 -S $SECRET --http-stats --aes-pwd proxy-secret proxy-multi.conf -M 1 &
-        
-        # Export SECRET for the test step
+
         echo "MTPROXY_SECRET=$SECRET" >> $GITHUB_ENV
-        
-        # Wait for it to start
+
         sleep 5
 
     - name: Run Python Tests
@@ -120,18 +116,16 @@ jobs:
         export MTPROXY_PORT=8443
         python3 tests/test_proxy.py
 
-    - name: Run TLS E2E Tests (Direct)
+    - name: Run TLS E2E Tests (ME Relay)
       run: |
         source .venv/bin/activate
 
-        # Start a second proxy instance with -D ya.ru for TLS testing
         cd mtproxy-run
         ./mtproto-proxy -p 9888 -H 9443 -S $MTPROXY_SECRET \
           --http-stats --aes-pwd proxy-secret proxy-multi.conf -D ya.ru -M 0 &
         TLS_PID=$!
         cd ..
 
-        # Wait for TLS proxy to be ready
         for i in $(seq 1 30); do
           curl -sf http://localhost:9888/stats >/dev/null 2>&1 && break
           sleep 2
@@ -142,6 +136,75 @@ jobs:
         python3 tests/test_tls_e2e.py
 
         kill $TLS_PID 2>/dev/null || true
+
+  test-direct-e2e:
+    runs-on: ubuntu-latest
+    # Only run when secrets are available (skip on fork PRs)
+    if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libssl-dev zlib1g-dev git curl vim-common python3 python3-pip python3-venv netcat-openbsd
+        python3 -m venv .venv
+        source .venv/bin/activate
+        pip install requests telethon TelethonFakeTLS
+
+    - name: Build MTProxy
+      run: |
+        make clean && make -j$(nproc)
+
+    - name: Start Direct-Mode Proxies
+      run: |
+        echo "Checking connectivity to Telegram DC (149.154.167.51:443)..."
+        nc -zv 149.154.167.51 443 || echo "WARNING: Cannot reach Telegram DC"
+
+        mkdir -p mtproxy-run
+        cp objs/bin/mtproto-proxy mtproxy-run/
+        cd mtproxy-run
+
+        SECRET=$(head -c 16 /dev/urandom | xxd -ps)
+        echo "Using secret: $SECRET"
+        echo "MTPROXY_SECRET=$SECRET" >> $GITHUB_ENV
+
+        # Obfuscated2 direct-mode proxy (no proxy-secret/proxy-multi.conf needed)
+        ./mtproto-proxy -u nobody -p 8888 -H 8443 -S $SECRET \
+          --http-stats --direct -M 0 &
+        echo "Started obfs2 direct-mode proxy on port 8443"
+
+        # Fake-TLS direct-mode proxy
+        ./mtproto-proxy -u nobody -p 9888 -H 9443 -S $SECRET \
+          --http-stats --direct -D ya.ru -M 0 &
+        echo "Started fake-TLS direct-mode proxy on port 9443"
+
+        # Wait for both proxies to be ready
+        for port in 8888 9888; do
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:$port/stats >/dev/null 2>&1 && break
+            sleep 2
+          done
+          curl -sf http://localhost:$port/stats >/dev/null 2>&1 || {
+            echo "ERROR: Proxy on stats port $port not ready after 60s"
+            exit 1
+          }
+        done
+        echo "Both proxies are ready"
+
+    - name: Run Direct Mode E2E Tests
+      env:
+        TG_STRING_SESSION: ${{ secrets.TG_STRING_SESSION }}
+      run: |
+        source .venv/bin/activate
+        DIRECT_HOST=localhost \
+        DIRECT_OBFS2_PORT=8443 \
+        DIRECT_TLS_PORT=9443 \
+        MTPROXY_SECRET=$MTPROXY_SECRET \
+        EE_DOMAIN=ya.ru \
+        python3 tests/test_direct_e2e.py
 
   test-asan:
     runs-on: ubuntu-latest
