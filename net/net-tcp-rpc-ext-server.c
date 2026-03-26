@@ -176,8 +176,10 @@ int tcp_proxy_pass_write_packet (connection_job_t C, struct raw_message *raw) {
  */
 
 extern int direct_mode;
+extern int workers;
 extern long long direct_dc_connections_created, direct_dc_connections_active;
 extern long long per_secret_connections[16], per_secret_connections_created[16];
+extern long long per_secret_connections_rejected[16];
 
 static int tcp_direct_client_parse_execute (connection_job_t C);
 static int tcp_direct_dc_parse_execute (connection_job_t C);
@@ -466,8 +468,9 @@ static unsigned char ext_secret[16][16];
 static int ext_secret_cnt = 0;
 static int ext_rand_pad_only = 0;
 static char ext_secret_label[16][EXT_SECRET_LABEL_MAX + 1];
+static int ext_secret_limit[16];  /* 0 = unlimited */
 
-void tcp_rpcs_set_ext_secret (unsigned char secret[16], const char *label) {
+void tcp_rpcs_set_ext_secret (unsigned char secret[16], const char *label, int limit) {
   assert (ext_secret_cnt < 16);
   int idx = ext_secret_cnt++;
   memcpy (ext_secret[idx], secret, 16);
@@ -476,7 +479,12 @@ void tcp_rpcs_set_ext_secret (unsigned char secret[16], const char *label) {
   } else {
     snprintf (ext_secret_label[idx], sizeof (ext_secret_label[idx]), "secret_%d", idx);
   }
-  vkprintf (0, "Added secret #%d label=[%s]\n", idx, ext_secret_label[idx]);
+  ext_secret_limit[idx] = limit;
+  if (limit > 0) {
+    vkprintf (0, "Added secret #%d label=[%s] limit=%d\n", idx, ext_secret_label[idx], limit);
+  } else {
+    vkprintf (0, "Added secret #%d label=[%s] (unlimited)\n", idx, ext_secret_label[idx]);
+  }
 }
 
 const char *tcp_rpcs_get_ext_secret_label (int index) {
@@ -484,8 +492,21 @@ const char *tcp_rpcs_get_ext_secret_label (int index) {
   return ext_secret_label[index];
 }
 
+int tcp_rpcs_get_ext_secret_limit (int index) {
+  assert (index >= 0 && index < ext_secret_cnt);
+  return ext_secret_limit[index];
+}
+
 int tcp_rpcs_get_ext_secret_count (void) {
   return ext_secret_cnt;
+}
+
+static int secret_over_limit (int secret_id) {
+  int limit = ext_secret_limit[secret_id];
+  if (limit <= 0) { return 0; }
+  int eff = workers > 1 ? limit / workers : limit;
+  if (eff < 1) { eff = 1; }
+  return per_secret_connections[secret_id] >= eff;
 }
 
 void tcp_rpcs_set_ext_rand_pad_only(int set) {
@@ -1457,6 +1478,12 @@ int tcp_rpcs_compact_parse_execute (connection_job_t C) {
         D->extra_int2 = secret_id + 1;
         vkprintf (1, "TLS handshake matched secret [%s] from %s:%d\n", ext_secret_label[secret_id], show_remote_ip (C), c->remote_port);
 
+        if (secret_over_limit (secret_id)) {
+          per_secret_connections_rejected[secret_id]++;
+          vkprintf (1, "TLS connection rejected: secret [%s] at limit %d from %s:%d\n", ext_secret_label[secret_id], ext_secret_limit[secret_id], show_remote_ip (C), c->remote_port);
+          RETURN_TLS_ERROR(info);
+        }
+
         unsigned char cipher_suite_id;
         if (tls_parse_client_hello_ciphers (client_hello, read_len, &cipher_suite_id) < 0) {
           vkprintf (1, "Can't find supported cipher suite\n");
@@ -1626,6 +1653,17 @@ int tcp_rpcs_compact_parse_execute (connection_job_t C) {
       }
 
       if (ok) {
+        /* Check per-secret connection limit (non-TLS; TLS checked during handshake) */
+        if (!(c->flags & C_IS_TLS)) {
+          int _sid = D->extra_int2;
+          if (_sid > 0 && _sid <= 16 && secret_over_limit (_sid - 1)) {
+            per_secret_connections_rejected[_sid - 1]++;
+            vkprintf (1, "connection rejected: secret [%s] at limit %d from %s:%d\n", ext_secret_label[_sid - 1], ext_secret_limit[_sid - 1], show_remote_ip (C), c->remote_port);
+            fail_connection (C, -1);
+            return 0;
+          }
+        }
+
         /* Activate DRS for TLS connections */
         if (c->flags & C_IS_TLS) {
           static int drs_types_checked;

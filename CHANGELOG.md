@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.4.0] - 2026-03-27
+
+### Added
+- **Per-secret connection limits** — cap concurrent connections per secret to prevent a leaked or widely-shared secret from consuming all proxy resources. Syntax: `-S secret:label:1000`. Fake-TLS connections are proxied to the domain on rejection (indistinguishable from a normal website); obfuscated2 connections are silently dropped. Docker: `SECRET_LIMIT_N` env vars. New stats: `secret_<label>_limit`, `secret_<label>_rejected`, and Prometheus equivalents ([#66](https://github.com/GetPageSpeed/MTProxy/issues/66))
+
 ## [3.3.0] - 2026-03-27
 
 ### Added

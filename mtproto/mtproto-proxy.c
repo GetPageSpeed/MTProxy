@@ -197,6 +197,7 @@ struct ext_connection_ref {
 
 long long ext_connections, ext_connections_created;
 long long per_secret_connections[16], per_secret_connections_created[16];
+long long per_secret_connections_rejected[16];
 
 struct ext_connection_ref OutExtConnections[EXT_CONN_TABLE_SIZE];
 struct ext_connection *InExtConnectionHash[EXT_CONN_HASH_SIZE];
@@ -414,6 +415,7 @@ struct worker_stats {
 
   long long per_secret_connections[16];
   long long per_secret_connections_created[16];
+  long long per_secret_connections_rejected[16];
 };
 
 struct worker_stats *WStats, SumStats;
@@ -473,6 +475,7 @@ static void update_local_stats_copy (struct worker_stats *S) {
   { int _i; for (_i = 0; _i < 16; _i++) {
     UPD (per_secret_connections[_i]);
     UPD (per_secret_connections_created[_i]);
+    UPD (per_secret_connections_rejected[_i]);
   }}
 #undef UPD
   __sync_synchronize();
@@ -553,6 +556,7 @@ static inline void add_stats (struct worker_stats *W) {
   { int _i; for (_i = 0; _i < 16; _i++) {
     UPD (per_secret_connections[_i]);
     UPD (per_secret_connections_created[_i]);
+    UPD (per_secret_connections_rejected[_i]);
   }}
 #undef UPD
 }
@@ -753,9 +757,15 @@ void mtfront_prepare_stats (stats_buffer_t *sb) {
     for (_i = 0; _i < _sc; _i++) {
       sb_printf (sb,
 	       "secret_%s_connections\t%lld\n"
-	       "secret_%s_connections_created\t%lld\n",
+	       "secret_%s_connections_created\t%lld\n"
+	       "secret_%s_rejected\t%lld\n",
 	       tcp_rpcs_get_ext_secret_label (_i), S(per_secret_connections[_i]),
-	       tcp_rpcs_get_ext_secret_label (_i), S(per_secret_connections_created[_i]));
+	       tcp_rpcs_get_ext_secret_label (_i), S(per_secret_connections_created[_i]),
+	       tcp_rpcs_get_ext_secret_label (_i), S(per_secret_connections_rejected[_i]));
+      int _lim = tcp_rpcs_get_ext_secret_limit (_i);
+      if (_lim > 0) {
+        sb_printf (sb, "secret_%s_limit\t%d\n", tcp_rpcs_get_ext_secret_label (_i), _lim);
+      }
     }
   }
 #undef S
@@ -927,6 +937,20 @@ void mtfront_prepare_prometheus_stats (stats_buffer_t *sb) {
       for (_i = 0; _i < _sc; _i++) {
         sb_printf (sb, "mtproxy_secret_connections_created_total{secret=\"%s\"} %lld\n",
 	         tcp_rpcs_get_ext_secret_label (_i), S(per_secret_connections_created[_i]));
+      }
+      sb_printf (sb,
+	       "# HELP mtproxy_secret_connection_limit Configured connection limit per secret (0=unlimited).\n"
+	       "# TYPE mtproxy_secret_connection_limit gauge\n");
+      for (_i = 0; _i < _sc; _i++) {
+        sb_printf (sb, "mtproxy_secret_connection_limit{secret=\"%s\"} %d\n",
+	         tcp_rpcs_get_ext_secret_label (_i), tcp_rpcs_get_ext_secret_limit (_i));
+      }
+      sb_printf (sb,
+	       "# HELP mtproxy_secret_connections_rejected_total Connections rejected due to per-secret limit.\n"
+	       "# TYPE mtproxy_secret_connections_rejected_total counter\n");
+      for (_i = 0; _i < _sc; _i++) {
+        sb_printf (sb, "mtproxy_secret_connections_rejected_total{secret=\"%s\"} %lld\n",
+	         tcp_rpcs_get_ext_secret_label (_i), S(per_secret_connections_rejected[_i]));
       }
     }
   }
@@ -2447,12 +2471,30 @@ int f_parse_option (int val) {
     {
       char *label = NULL;
       int hex_len;
+      int conn_limit = 0;
 
       if (val == 'S') {
         char *colon = strchr (optarg, ':');
         if (colon) {
           hex_len = colon - optarg;
           label = colon + 1;
+
+          /* Look for optional :LIMIT after label */
+          char *colon2 = strchr (label, ':');
+          if (colon2) {
+            *colon2 = '\0';
+            char *limit_str = colon2 + 1;
+            if (*limit_str) {
+              char *endp;
+              long lv = strtol (limit_str, &endp, 10);
+              if (*endp || lv < 1) {
+                kprintf ("Invalid connection limit '%s' (must be a positive integer)\n", limit_str);
+                usage ();
+              }
+              conn_limit = (int)lv;
+            }
+          }
+
           if (strlen (label) == 0) {
             label = NULL;
           } else if (strlen (label) > EXT_SECRET_LABEL_MAX) {
@@ -2499,7 +2541,7 @@ int f_parse_option (int val) {
         }
       }
       if (val == 'S') {
-	tcp_rpcs_set_ext_secret (secret, label);
+	tcp_rpcs_set_ext_secret (secret, label, conn_limit);
 	secret_count++;
       } else {
 	memcpy (proxy_tag, secret, sizeof (proxy_tag));
@@ -2527,7 +2569,7 @@ int f_parse_option (int val) {
 
 void mtfront_prepare_parse_options (void) {
   parse_option ("http-stats", no_argument, 0, 2000, "allow http server to answer on stats queries");
-  parse_option ("mtproto-secret", required_argument, 0, 'S', "16-byte secret in hex, optionally followed by :LABEL (e.g. -S abcdef01234567890abcdef012345678:myapp)");
+  parse_option ("mtproto-secret", required_argument, 0, 'S', "16-byte secret in hex, optionally :LABEL:LIMIT (e.g. -S abcdef01234567890abcdef012345678:myapp:1000)");
   parse_option ("proxy-tag", required_argument, 0, 'P', "16-byte proxy tag in hex mode to be passed along with all forwarded queries");
   parse_option ("domain", required_argument, 0, 'D', "adds allowed domain or host:port for TLS-transport mode, disables other transports; can be specified more than once");
   parse_option ("max-special-connections", required_argument, 0, 'C', "sets maximal number of accepted client connections per worker");
