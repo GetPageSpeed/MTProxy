@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.3.1] - 2026-03-27
+
+### Fixed
+- Removed CLAUDE.md from version control (was in .gitignore but still tracked)
+
 ## [3.3.0] - 2026-03-27
 
 ### Added
