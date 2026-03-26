@@ -177,6 +177,7 @@ int tcp_proxy_pass_write_packet (connection_job_t C, struct raw_message *raw) {
 
 extern int direct_mode;
 extern long long direct_dc_connections_created, direct_dc_connections_active;
+extern long long per_secret_connections[16], per_secret_connections_created[16];
 
 static int tcp_direct_client_parse_execute (connection_job_t C);
 static int tcp_direct_dc_parse_execute (connection_job_t C);
@@ -278,6 +279,10 @@ static int tcp_direct_close (connection_job_t C, int who) {
   vkprintf (1, "closing direct connection #%d %s:%d -> %s:%d\n", c->fd, show_our_ip (C), c->our_port, show_remote_ip (C), c->remote_port);
   if ((c->type == &ct_direct_client || c->type == &ct_direct_client_drs) && direct_dc_connections_active > 0) {
     direct_dc_connections_active--;
+    int sid = TCP_RPC_DATA(C)->extra_int2;
+    if (sid > 0 && sid <= 16) {
+      per_secret_connections[sid - 1]--;
+    }
   }
   if (c->extra) {
     job_t E = PTR_MOVE (c->extra);
@@ -430,6 +435,12 @@ static int direct_connect_to_dc (connection_job_t C, int target_dc) {
   direct_dc_connections_created++;
   direct_dc_connections_active++;
 
+  int sid = TCP_RPC_DATA(C)->extra_int2;
+  if (sid > 0 && sid <= 16) {
+    per_secret_connections[sid - 1]++;
+    per_secret_connections_created[sid - 1]++;
+  }
+
   assert (CONN_INFO(EJ)->io_conn);
   unlock_job (JOB_REF_PASS (EJ));
 
@@ -447,10 +458,27 @@ int tcp_rpcs_default_execute (connection_job_t c, int op, struct raw_message *ms
 static unsigned char ext_secret[16][16];
 static int ext_secret_cnt = 0;
 static int ext_rand_pad_only = 0;
+static char ext_secret_label[16][EXT_SECRET_LABEL_MAX + 1];
 
-void tcp_rpcs_set_ext_secret (unsigned char secret[16]) {
+void tcp_rpcs_set_ext_secret (unsigned char secret[16], const char *label) {
   assert (ext_secret_cnt < 16);
-  memcpy (ext_secret[ext_secret_cnt ++], secret, 16);
+  int idx = ext_secret_cnt++;
+  memcpy (ext_secret[idx], secret, 16);
+  if (label && label[0]) {
+    snprintf (ext_secret_label[idx], sizeof (ext_secret_label[idx]), "%s", label);
+  } else {
+    snprintf (ext_secret_label[idx], sizeof (ext_secret_label[idx]), "secret_%d", idx);
+  }
+  vkprintf (0, "Added secret #%d label=[%s]\n", idx, ext_secret_label[idx]);
+}
+
+const char *tcp_rpcs_get_ext_secret_label (int index) {
+  assert (index >= 0 && index < ext_secret_cnt);
+  return ext_secret_label[index];
+}
+
+int tcp_rpcs_get_ext_secret_count (void) {
+  return ext_secret_cnt;
 }
 
 void tcp_rpcs_set_ext_rand_pad_only(int set) {
@@ -1419,6 +1447,9 @@ int tcp_rpcs_compact_parse_execute (connection_job_t C) {
           RETURN_TLS_ERROR(info);
         }
 
+        D->extra_int2 = secret_id + 1;
+        vkprintf (1, "TLS handshake matched secret [%s] from %s:%d\n", ext_secret_label[secret_id], show_remote_ip (C), c->remote_port);
+
         unsigned char cipher_suite_id;
         if (tls_parse_client_hello_ciphers (client_hello, read_len, &cipher_suite_id) < 0) {
           vkprintf (1, "Can't find supported cipher suite\n");
@@ -1576,7 +1607,8 @@ int tcp_rpcs_compact_parse_execute (connection_job_t C) {
 
           int target = *(short *)(random_header + 60);
           D->extra_int4 = target;
-          vkprintf (1, "tcp opportunistic encryption mode detected, tag = %08x, target=%d\n", tag, target);
+          D->extra_int2 = secret_id + 1;
+          vkprintf (1, "tcp opportunistic encryption mode detected, tag = %08x, target=%d, secret [%s]\n", tag, target, ext_secret_label[secret_id]);
           ok = 1;
           break;
         } else {

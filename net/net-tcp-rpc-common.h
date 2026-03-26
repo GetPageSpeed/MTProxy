@@ -134,7 +134,7 @@ struct tcp_rpc_data {
     void *extra;
   };
   int extra_int;
-  int extra_int2;
+  int extra_int2;  /* matched secret index + 1 (0 = unset) */
   int extra_int3;
   int extra_int4;
   double extra_double, extra_double2;
