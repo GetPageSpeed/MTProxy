@@ -19,7 +19,7 @@ The proxy **must** pass `--nat-info LOCAL_IP:EXTERNAL_IP` to work behind Docker 
 Stored in `connection_info.custom_data[256]`, accessed via `TCP_RPC_DATA(C)`. Field usage:
 - `extra_int` — conn_tag (set in `mtproto_proxy_rpc_ready`)
 - `extra_int2` — matched secret index + 1 (0 = unset; set during handshake)
-- `extra_int3` — unused
+- `extra_int3` — client transport tag for direct mode (e.g. `0xdddddddd`)
 - `extra_int4` — target DC number (set during obfuscated2 handshake)
 
 ### Cross-TU Globals Pattern
@@ -37,7 +37,9 @@ Any `conn_type_t` struct used via runtime pointer switch **must** have `check_co
   1. `read_server_hello()` only reads the first encrypted record (patched in `test_tls_e2e.py`)
   2. `FakeTLSStreamWriter.write()` never sends CCS (`\x14\x03\x03\x00\x01\x01`) before the first data record — proxy rejects with "bad client dummy ChangeCipherSpec" (patched in `test_drs_e2e.py`)
 - The `test_telethon_connects` test validates HMAC but can't complete auth_key exchange without real Telegram DC connectivity
-- The `test-direct` CI job installs only `requests telethon` (not full `requirements.txt`) and runs natively on Ubuntu — new test dependencies must either be in stdlib or the test must degrade gracefully
+- The `test-native-build` CI job (formerly `test-direct`) installs only `requests telethon` and runs natively on Ubuntu — new test dependencies must either be in stdlib or the test must degrade gracefully
+- `test-direct-e2e` CI job tests actual `--direct` mode with a real Telethon session (`get_me()` through proxy). Requires `TG_STRING_SESSION` GitHub secret (StringSession string). Skips gracefully on fork PRs where the secret is absent.
+- `tests/test_direct_e2e.py` — E2E tests for both obfuscated2 (dd-prefix) and fake-TLS (ee-prefix) direct-mode transport
 - **Multi-secret test gotcha**: `test_wrong_secret_still_rejected` creates the "wrong" secret by flipping all bits of SECRET_1. If SECRET_2 is the bit-complement of SECRET_1, the test fails because the "wrong" secret matches SECRET_2. Use non-complementary secrets when running `docker-compose.multi-secret-test.yml` manually.
 
 ### Fuzz Tests
