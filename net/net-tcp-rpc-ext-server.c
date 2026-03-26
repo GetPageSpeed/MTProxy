@@ -355,8 +355,10 @@ static int tcp_direct_dc_connected (connection_job_t C) {
   /* Replace bytes 56-63 with their encrypted version */
   memcpy (init + 56, encrypted + 56, 8);
 
-  /* Send the 64-byte init as raw bytes (before crypto layer is active) */
-  assert (rwm_push_data (&c->out, init, 64) == 64);
+  /* Send the 64-byte init as raw bytes, bypassing the crypto layer.
+     We write to out_p (post-crypto buffer) because c->crypto will be set
+     below — anything in c->out would be AES-encrypted on flush. */
+  assert (rwm_push_data (&c->out_p, init, 64) == 64);
 
   /* Now set up the AES-CTR crypto context for ongoing communication.
      The write counter must start at position 64 (we already "used" 64 bytes
