@@ -173,12 +173,12 @@ jobs:
 
         # Obfuscated2 direct-mode proxy (no proxy-secret/proxy-multi.conf needed)
         ./mtproto-proxy -u nobody -p 8888 -H 8443 -S $SECRET \
-          --http-stats --direct -M 0 -v 2>obfs2.log &
+          --http-stats --direct -M 0 -v -v -v 2>obfs2.log &
         echo "Started obfs2 direct-mode proxy on port 8443"
 
         # Fake-TLS direct-mode proxy
         ./mtproto-proxy -u nobody -p 9888 -H 9443 -S $SECRET \
-          --http-stats --direct -D ya.ru -M 0 -v 2>faketls.log &
+          --http-stats --direct -D ya.ru -M 0 -v -v -v 2>faketls.log &
         echo "Started fake-TLS direct-mode proxy on port 9443"
 
         # Wait for both proxies to be ready

@@ -319,8 +319,12 @@ static int tcp_direct_dc_connected (connection_job_t C) {
     *(unsigned *)(init + 4) == 0x00000000
   );
 
-  /* Set protocol tag (intermediate transport) and target DC */
-  *(unsigned *)(init + 56) = 0xeeeeeeee;
+  /* Set protocol tag matching the client's transport and target DC */
+  unsigned client_tag = (unsigned)D->extra_int3;
+  if (!client_tag) {
+    client_tag = 0xeeeeeeee;  /* fallback: intermediate */
+  }
+  *(unsigned *)(init + 56) = client_tag;
   *(short *)(init + 60) = (short)target_dc;
 
   /* Derive AES keys -- NO secret mixing (DCs don't know proxy secret).
@@ -415,8 +419,9 @@ static int direct_connect_to_dc (connection_job_t C, int target_dc) {
     return 0;
   }
 
-  /* Store target DC in the DC connection for the connected callback */
+  /* Store target DC and client transport tag for the connected callback */
   TCP_RPC_DATA(EJ)->extra_int4 = target_dc;
+  TCP_RPC_DATA(EJ)->extra_int3 = TCP_RPC_DATA(C)->extra_int3;  /* client transport tag */
 
   /* Switch client to direct relay mode (keeps existing AES crypto) */
   if (c->flags & C_IS_TLS) {
@@ -1608,6 +1613,7 @@ int tcp_rpcs_compact_parse_execute (connection_job_t C) {
           int target = *(short *)(random_header + 60);
           D->extra_int4 = target;
           D->extra_int2 = secret_id + 1;
+          D->extra_int3 = (int)tag;  /* client transport tag for direct mode */
           vkprintf (1, "tcp opportunistic encryption mode detected, tag = %08x, target=%d, secret [%s]\n", tag, target, ext_secret_label[secret_id]);
           ok = 1;
           break;
