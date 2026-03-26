@@ -33,7 +33,7 @@ The table below compares it with the original and the two main third-party alter
 | Fake-TLS (EE mode) | Yes | Yes | Yes | Yes |
 | Direct-to-DC mode | No | Yes | Yes | Yes |
 | Ad proxy tag | Yes | Yes | No | Yes |
-| Multiple secrets | Yes | Yes (up to 16) | No | Yes |
+| Multiple secrets | Yes | Yes (up to 16, with labels) | No | Yes |
 | Anti-replay protection | Weak | Yes | Yes | Partial |
 | Constant-time HMAC | No | Yes | — | Yes |
 | ***Censorship resistance*** | | | | |
@@ -143,7 +143,7 @@ head -c 16 /dev/urandom | xxd -ps
 - `nobody` is the username. `mtproto-proxy` calls `setuid()` to drop privilegies.
 - `443` is the port, used by clients to connect to the proxy.
 - `8888` is the local port for statistics (requires `--http-stats`). Like `curl http://localhost:8888/stats`. Stats are accessible from private networks (loopback, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) but not from public IPs.
-- `<secret>` is the secret generated at step 3. Also you can set multiple secrets: `-S <secret1> -S <secret2>`.
+- `<secret>` is the secret generated at step 3. Also you can set multiple secrets: `-S <secret1> -S <secret2>`. Each secret can have an optional label: `-S <secret>:family -S <secret>:friends`. Labels appear in logs and stats instead of raw secrets, making it easy to identify which secret a connection used.
 - `--aes-pwd proxy-secret` points to the `proxy-secret` file downloaded at step 1, which contains the encryption key used for MTProto key exchange with Telegram DCs.
 - `proxy-secret` and `proxy-multi.conf` are obtained at steps 1 and 2.
 - `1` is the number of workers. You can increase the number of workers, if you have a powerful server.
@@ -463,9 +463,11 @@ docker run -d \
 - `SECRET`: Proxy secret(s) — 32 hex characters each (auto-generated if not provided)
   - Single: `SECRET=cafe1234567890abcdef1234567890ab`
   - Multiple (comma-separated): `SECRET=secret1,secret2,secret3`
+  - With labels: `SECRET=hex1:family,hex2:friends` (see [Secret Labels](#secret-labels))
   - Multiple (numbered): `SECRET_1=aabb...`, `SECRET_2=ccdd...` (up to `SECRET_16`)
   - If both `SECRET` and `SECRET_N` are set, all are combined
   - Maximum 16 secrets (binary limit)
+- `SECRET_LABEL_1`, `SECRET_LABEL_2`, ...: Optional labels for numbered secrets (e.g. `SECRET_LABEL_1=family`). See [Secret Labels](#secret-labels)
 - `PORT`: Port for client connections (default: 443)
 - `STATS_PORT`: Port for statistics endpoint (default: 8888)
 - `WORKERS`: Number of worker processes (default: 1)
@@ -489,7 +491,7 @@ curl http://localhost:8888/stats
 curl http://localhost:8888/metrics
 ```
 
-Returns metrics in [Prometheus exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/), ready for scraping. Available on the same `--http-stats` port, restricted to private networks.
+Returns metrics in [Prometheus exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/), ready for scraping. Available on the same `--http-stats` port, restricted to private networks. Includes per-secret connection metrics when [secret labels](#secret-labels) are configured.
 
 ### Using Docker Compose
 
@@ -528,6 +530,34 @@ SECRET_1=family_secret_hex
 SECRET_2=friends_secret_hex
 SECRET_3=public_secret_hex
 ```
+
+#### Secret Labels
+
+Labels let you identify which secret a connection is using — useful for revoking leaked
+secrets or monitoring per-group traffic:
+
+```bash
+# Inline labels (CLI)
+./mtproto-proxy ... -S cafe1234567890abcdef1234567890ab:family -S dead1234567890abcdef1234567890ef:friends
+
+# Inline labels (Docker)
+SECRET=cafe1234567890abcdef1234567890ab:family,dead1234567890abcdef1234567890ef:friends
+
+# Separate label env vars (Docker)
+SECRET_1=cafe1234567890abcdef1234567890ab
+SECRET_LABEL_1=family
+SECRET_2=dead1234567890abcdef1234567890ef
+SECRET_LABEL_2=friends
+```
+
+Labels appear in:
+- **Logs**: `TLS handshake matched secret [family] from 1.2.3.4:12345`
+- **Prometheus** (`/metrics`): `mtproxy_secret_connections{secret="family"} 3`
+- **Stats** (`/stats`): `secret_family_connections	3`
+
+If no label is given, secrets are auto-labeled `secret_0`, `secret_1`, etc.
+
+Label rules: max 32 characters, alphanumeric plus `_` and `-` only.
 
 And reference it in your `docker-compose.yml`:
 ```yaml

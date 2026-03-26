@@ -29,8 +29,12 @@ extern conn_type_t ct_tcp_rpc_ext_server;
 
 int tcp_rpcs_compact_parse_execute (connection_job_t c);
 
-void tcp_rpcs_set_ext_secret(unsigned char secret[16]);
+#define EXT_SECRET_LABEL_MAX 32
+
+void tcp_rpcs_set_ext_secret(unsigned char secret[16], const char *label);
 void tcp_rpcs_set_ext_rand_pad_only(int set);
+const char *tcp_rpcs_get_ext_secret_label(int index);
+int tcp_rpcs_get_ext_secret_count(void);
 
 void tcp_rpc_add_proxy_domain (const char *domain);
 

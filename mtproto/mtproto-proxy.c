@@ -196,6 +196,7 @@ struct ext_connection_ref {
 };
 
 long long ext_connections, ext_connections_created;
+long long per_secret_connections[16], per_secret_connections_created[16];
 
 struct ext_connection_ref OutExtConnections[EXT_CONN_TABLE_SIZE];
 struct ext_connection *InExtConnectionHash[EXT_CONN_HASH_SIZE];
@@ -410,6 +411,9 @@ struct worker_stats {
 
   long long ext_connections, ext_connections_created;
   long long http_queries, http_bad_headers;
+
+  long long per_secret_connections[16];
+  long long per_secret_connections_created[16];
 };
 
 struct worker_stats *WStats, SumStats;
@@ -464,8 +468,12 @@ static void update_local_stats_copy (struct worker_stats *S) {
   UPD (connections_failed_flood);
   UPD (ext_connections); 
   UPD (ext_connections_created); 
-  UPD (http_queries); 
+  UPD (http_queries);
   UPD (http_bad_headers);
+  { int _i; for (_i = 0; _i < 16; _i++) {
+    UPD (per_secret_connections[_i]);
+    UPD (per_secret_connections_created[_i]);
+  }}
 #undef UPD
   __sync_synchronize();
   S->cnt++;
@@ -538,10 +546,14 @@ static inline void add_stats (struct worker_stats *W) {
   UPD (direct_dc_connections_active);
   UPD (connections_failed_lru);
   UPD (connections_failed_flood);
-  UPD (ext_connections); 
-  UPD (ext_connections_created); 
-  UPD (http_queries); 
+  UPD (ext_connections);
+  UPD (ext_connections_created);
+  UPD (http_queries);
   UPD (http_bad_headers);
+  { int _i; for (_i = 0; _i < 16; _i++) {
+    UPD (per_secret_connections[_i]);
+    UPD (per_secret_connections_created[_i]);
+  }}
 #undef UPD
 }
 
@@ -735,6 +747,17 @@ void mtfront_prepare_stats (stats_buffer_t *sb) {
 	     S(direct_dc_connections_created),
 	     S(direct_dc_connections_active)
   );
+
+  { int _sc = tcp_rpcs_get_ext_secret_count();
+    int _i;
+    for (_i = 0; _i < _sc; _i++) {
+      sb_printf (sb,
+	       "secret_%s_connections\t%lld\n"
+	       "secret_%s_connections_created\t%lld\n",
+	       tcp_rpcs_get_ext_secret_label (_i), S(per_secret_connections[_i]),
+	       tcp_rpcs_get_ext_secret_label (_i), S(per_secret_connections_created[_i]));
+    }
+  }
 #undef S
 #undef S1
 #undef SW
@@ -887,6 +910,26 @@ void mtfront_prepare_prometheus_stats (stats_buffer_t *sb) {
 	     SW(bufs.allocated_buffer_bytes),
 	     S(direct_dc_connections_active)
   );
+
+  { int _sc = tcp_rpcs_get_ext_secret_count();
+    if (_sc > 0) {
+      int _i;
+      sb_printf (sb,
+	       "# HELP mtproxy_secret_connections Current connections per configured secret.\n"
+	       "# TYPE mtproxy_secret_connections gauge\n");
+      for (_i = 0; _i < _sc; _i++) {
+        sb_printf (sb, "mtproxy_secret_connections{secret=\"%s\"} %lld\n",
+	         tcp_rpcs_get_ext_secret_label (_i), S(per_secret_connections[_i]));
+      }
+      sb_printf (sb,
+	       "# HELP mtproxy_secret_connections_created_total Total connections per configured secret.\n"
+	       "# TYPE mtproxy_secret_connections_created_total counter\n");
+      for (_i = 0; _i < _sc; _i++) {
+        sb_printf (sb, "mtproxy_secret_connections_created_total{secret=\"%s\"} %lld\n",
+	         tcp_rpcs_get_ext_secret_label (_i), S(per_secret_connections_created[_i]));
+      }
+    }
+  }
 
 #undef S
 #undef S1
@@ -1255,6 +1298,11 @@ int mtproto_http_close (connection_job_t C, int who) {
 int mtproto_ext_rpc_ready (connection_job_t C) {
   assert ((unsigned) CONN_INFO(C)->fd < MAX_CONNECTIONS);
   vkprintf (3, "ext_rpc connection ready (%d)\n", CONN_INFO(C)->fd);
+  int sid = TCP_RPC_DATA(C)->extra_int2;
+  if (sid > 0 && sid <= 16) {
+    per_secret_connections[sid - 1]++;
+    per_secret_connections_created[sid - 1]++;
+  }
   lru_insert_conn (C);
   return 0;
 }
@@ -1262,6 +1310,10 @@ int mtproto_ext_rpc_ready (connection_job_t C) {
 int mtproto_ext_rpc_close (connection_job_t C, int who) {
   assert ((unsigned) CONN_INFO(C)->fd < MAX_CONNECTIONS);
   vkprintf (3, "ext_rpc connection closing (%d) by %d\n", CONN_INFO(C)->fd, who);
+  int sid = TCP_RPC_DATA(C)->extra_int2;
+  if (sid > 0 && sid <= 16) {
+    per_secret_connections[sid - 1]--;
+  }
   struct ext_connection *Ex = get_ext_connection_by_in_fd (CONN_INFO(C)->fd);
   if (Ex) {
     remove_ext_connection (Ex, 1);
@@ -2393,7 +2445,36 @@ int f_parse_option (int val) {
   case 'S':
   case 'P':
     {
-      if (strlen (optarg) != 32) {
+      char *label = NULL;
+      int hex_len;
+
+      if (val == 'S') {
+        char *colon = strchr (optarg, ':');
+        if (colon) {
+          hex_len = colon - optarg;
+          label = colon + 1;
+          if (strlen (label) == 0) {
+            label = NULL;
+          } else if (strlen (label) > EXT_SECRET_LABEL_MAX) {
+            kprintf ("Secret label too long (max %d chars)\n", EXT_SECRET_LABEL_MAX);
+            usage ();
+          } else {
+            const char *p;
+            for (p = label; *p; p++) {
+              if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') || *p == '_' || *p == '-')) {
+                kprintf ("Secret label contains invalid character '%c' (allowed: a-z, A-Z, 0-9, _, -)\n", *p);
+                usage ();
+              }
+            }
+          }
+        } else {
+          hex_len = strlen (optarg);
+        }
+      } else {
+        hex_len = strlen (optarg);
+      }
+
+      if (hex_len != 32) {
         kprintf ("'%c' option requires exactly 32 hex digits\n", val);
         usage ();
       }
@@ -2418,7 +2499,7 @@ int f_parse_option (int val) {
         }
       }
       if (val == 'S') {
-	tcp_rpcs_set_ext_secret (secret);
+	tcp_rpcs_set_ext_secret (secret, label);
 	secret_count++;
       } else {
 	memcpy (proxy_tag, secret, sizeof (proxy_tag));
@@ -2446,7 +2527,7 @@ int f_parse_option (int val) {
 
 void mtfront_prepare_parse_options (void) {
   parse_option ("http-stats", no_argument, 0, 2000, "allow http server to answer on stats queries");
-  parse_option ("mtproto-secret", required_argument, 0, 'S', "16-byte secret in hex mode");
+  parse_option ("mtproto-secret", required_argument, 0, 'S', "16-byte secret in hex, optionally followed by :LABEL (e.g. -S abcdef01234567890abcdef012345678:myapp)");
   parse_option ("proxy-tag", required_argument, 0, 'P', "16-byte proxy tag in hex mode to be passed along with all forwarded queries");
   parse_option ("domain", required_argument, 0, 'D', "adds allowed domain or host:port for TLS-transport mode, disables other transports; can be specified more than once");
   parse_option ("max-special-connections", required_argument, 0, 'C', "sets maximal number of accepted client connections per worker");

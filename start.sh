@@ -62,7 +62,15 @@ _i=1
 while [ "$_i" -le 16 ]; do
     eval "_val=\${SECRET_${_i}:-}"
     _val=$(printf '%s' "$_val" | tr -d '[:space:]')
-    [ -n "$_val" ] && set -- "$@" "$_val"
+    if [ -n "$_val" ]; then
+        eval "_lbl=\${SECRET_LABEL_${_i}:-}"
+        _lbl=$(printf '%s' "$_lbl" | tr -d '[:space:]')
+        if [ -n "$_lbl" ]; then
+            set -- "$@" "${_val}:${_lbl}"
+        else
+            set -- "$@" "$_val"
+        fi
+    fi
     _i=$((_i + 1))
 done
 
@@ -156,16 +164,21 @@ echo ""
 echo "===== Connection Links ====="
 _host="${EXTERNAL_IP:-<YOUR_SERVER_IP>}"
 for _s in "$@"; do
+    # Strip :LABEL suffix for URLs (labels are for the proxy, not for clients)
+    _secret_hex=$(printf '%s' "$_s" | cut -d: -f1)
+    _label=$(printf '%s' "$_s" | grep -o ':.*' | cut -c2- || true)
     if [ -n "$EE_DOMAIN" ]; then
         _domain_only=$(printf '%s' "$EE_DOMAIN" | cut -d: -f1)
         _domain_hex=$(printf '%s' "$_domain_only" | od -An -tx1 | tr -d ' \n')
-        _full="ee${_s}${_domain_hex}"
+        _full="ee${_secret_hex}${_domain_hex}"
     elif [ "$RANDOM_PADDING" = "true" ]; then
-        _full="dd${_s}"
+        _full="dd${_secret_hex}"
     else
-        _full="$_s"
+        _full="$_secret_hex"
     fi
-    echo "https://t.me/proxy?server=${_host}&port=${PORT}&secret=${_full}"
+    _label_display=""
+    [ -n "$_label" ] && _label_display=" [$_label]"
+    echo "https://t.me/proxy?server=${_host}&port=${PORT}&secret=${_full}${_label_display}"
 done
 if [ "$_host" = "<YOUR_SERVER_IP>" ]; then
     echo "(Set EXTERNAL_IP to show your server's IP)"
