@@ -173,12 +173,12 @@ jobs:
 
         # Obfuscated2 direct-mode proxy (no proxy-secret/proxy-multi.conf needed)
         ./mtproto-proxy -u nobody -p 8888 -H 8443 -S $SECRET \
-          --http-stats --direct -M 0 &
+          --http-stats --direct -M 0 -v 2>obfs2.log &
         echo "Started obfs2 direct-mode proxy on port 8443"
 
         # Fake-TLS direct-mode proxy
         ./mtproto-proxy -u nobody -p 9888 -H 9443 -S $SECRET \
-          --http-stats --direct -D ya.ru -M 0 &
+          --http-stats --direct -D ya.ru -M 0 -v 2>faketls.log &
         echo "Started fake-TLS direct-mode proxy on port 9443"
 
         # Wait for both proxies to be ready
@@ -205,6 +205,15 @@ jobs:
         MTPROXY_SECRET=$MTPROXY_SECRET \
         EE_DOMAIN=ya.ru \
         python3 tests/test_direct_e2e.py
+
+    - name: Proxy logs (debug)
+      if: always()
+      run: |
+        echo "=== Obfs2 proxy log ==="
+        cat mtproxy-run/obfs2.log 2>/dev/null || echo "(no log)"
+        echo ""
+        echo "=== Fake-TLS proxy log ==="
+        cat mtproxy-run/faketls.log 2>/dev/null || echo "(no log)"
 
   test-asan:
     runs-on: ubuntu-latest
