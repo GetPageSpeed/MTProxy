@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.3.0] - 2026-03-27
+
+### Added
+- **Static binary releases** — pre-built `mtproto-proxy` binaries for Linux amd64 and arm64, statically linked against musl libc. Zero dependencies — download and run ([#65](https://github.com/GetPageSpeed/MTProxy/issues/65))
+- **Secret labels** — name your secrets with `label:hex` syntax for human-readable per-secret metrics in Prometheus (`mtproxy_secret_connections{label="office"}`) and stats endpoint ([#60](https://github.com/GetPageSpeed/MTProxy/issues/60))
+- CI: AddressSanitizer (ASan) job catches heap overflows and use-after-free at build time
+- CI: direct-mode E2E tests with real Telethon session (`get_me()` through proxy)
+
+### Fixed
+- Direct mode: client transport tag (e.g. `0xdddddddd`) now correctly propagated to DC obfuscated2 init — previously hardcoded, breaking all direct-mode connections ([#64](https://github.com/GetPageSpeed/MTProxy/issues/64))
+- Direct mode: obfuscated2 init to DC written as raw bytes to post-crypto buffer, preventing double encryption
+
 ## [3.2.0] - 2026-03-25
 
 ### Added
