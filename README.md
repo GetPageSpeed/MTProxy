@@ -50,6 +50,7 @@ The table below compares it with the original and the two main third-party alter
 | ARM64 / Apple Silicon | No | Yes | Yes | Yes |
 | IPv6 | Yes | Yes | Yes | Yes |
 | Multi-worker processes | Yes | Yes | — | — |
+| Static binary releases | No | Yes | Yes | Yes |
 | RPM packages | No | Yes | No | No |
 | Systemd integration | Partial | Yes | — | Yes |
 | ***Monitoring & management*** | | | | |
@@ -79,6 +80,24 @@ This includes:
 - SystemD service setup
 - Firewall configuration
 - Fake TLS setup instructions
+
+### Static Binary (Any Linux)
+
+Pre-built static binaries (musl libc, zero dependencies) are available for every [release](https://github.com/GetPageSpeed/MTProxy/releases):
+
+```bash
+# Download (choose amd64 or arm64)
+curl -Lo mtproto-proxy https://github.com/GetPageSpeed/MTProxy/releases/latest/download/mtproto-proxy-linux-amd64
+chmod +x mtproto-proxy
+
+# Generate a secret
+SECRET=$(head -c 16 /dev/urandom | xxd -ps)
+
+# Run in direct mode (simplest — no config files needed)
+./mtproto-proxy -S "$SECRET" -H 443 --direct -p 8888 --aes-pwd /dev/null
+```
+
+Binaries are available for `linux/amd64` and `linux/arm64`. SHA256 checksums are published alongside each release.
 
 ### Manual Build (Advanced)
 
