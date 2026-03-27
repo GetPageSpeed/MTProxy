@@ -147,9 +147,11 @@ int cpu_tcp_aes_crypto_ctr128_encrypt_output_drs (connection_job_t C) /* {{{ */ 
 
     assert (rwm_encrypt_decrypt_to (&c->out, &c->out_p, len, T->write_aeskey, 1) == len);
 
-    /* Inter-record delay: skip during bulk transfers for full throughput */
+    /* Inter-record delay: skip during bulk transfers and sustained transfers
+       (phase 3 = max-size records = no real server adds delays here).
+       Delays only apply during slow-start phases 1+2 (~140KB, ~60 records). */
     if (drs_delays_enabled && (c->flags & C_IS_TLS) && c->out.total_bytes > 0) {
-      if (c->out.total_bytes > DRS_BURST_THRESHOLD) {
+      if (c->out.total_bytes > DRS_BURST_THRESHOLD || drs->record_index >= DRS_PHASE2_END) {
         drs_delays_skipped++;
         continue;
       }

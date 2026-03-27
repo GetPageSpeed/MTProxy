@@ -127,10 +127,7 @@ def main():
     parser.add_argument("--domain",
                         default=os.environ.get("EE_DOMAIN", "google.com"))
     parser.add_argument("--session",
-                        default=os.environ.get(
-                            "TELETHON_SESSION",
-                            os.path.expanduser(
-                                "~/Projects/tgp/sessions/personal.session")))
+                        default=os.environ.get("TELETHON_SESSION", ""))
     parser.add_argument("--api-id", type=int,
                         default=int(os.environ.get("TGP_API_ID", "0")))
     parser.add_argument("--api-hash",

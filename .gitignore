@@ -11,3 +11,5 @@ fuzz/crash-*
 fuzz/oom-*
 fuzz/timeout-*
 CLAUDE.md
+tests/regenerate_*.py
+tests/seed_test_media.py
