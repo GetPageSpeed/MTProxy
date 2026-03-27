@@ -25,13 +25,34 @@ jobs:
             const chatId = process.env.TELEGRAM_CHAT_ID;
             if (!token || !chatId) return;
 
+            function mdToHtml(md) {
+              let s = md;
+              // Escape HTML entities first
+              s = s.replace(/&/g, '&amp;');
+              s = s.replace(/</g, '&lt;');
+              s = s.replace(/>/g, '&gt;');
+              // Markdown headings → bold
+              s = s.replace(/^#{1,6}\s+(.+)$/gm, '<b>$1</b>');
+              // Inline code (before bold/italic to avoid conflicts)
+              s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+              // Bold **text** or __text__
+              s = s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+              s = s.replace(/__(.+?)__/g, '<b>$1</b>');
+              // Italic *text* or _text_ (not inside words)
+              s = s.replace(/(?<!\w)\*([^*]+)\*(?!\w)/g, '<i>$1</i>');
+              s = s.replace(/(?<!\w)_([^_]+)_(?!\w)/g, '<i>$1</i>');
+              // Links [text](url)
+              s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+              return s;
+            }
+
             let text = '';
             const event = context.eventName;
             const repo = context.payload.repository.full_name;
 
             if (event === 'release') {
               const r = context.payload.release;
-              const body = r.body ? r.body.substring(0, 500) : '';
+              const body = r.body ? mdToHtml(r.body.substring(0, 2000)) : '';
               text = `🚀 <b>New Release: ${r.tag_name}</b>\n\n${body}\n\n<a href="${r.html_url}">Release notes</a> | <a href="https://github.com/${repo}">GitHub</a>`;
             } else if (event === 'issues' && context.payload.action === 'opened') {
               // Skip bot-created issues
@@ -45,7 +66,7 @@ jobs:
               // Skip auto-reply bot comments
               if (c.user.type === 'Bot') return;
               const i = context.payload.issue;
-              const snippet = c.body.substring(0, 300);
+              const snippet = mdToHtml(c.body.substring(0, 2000));
               text = `💬 <b>Comment on #${i.number}</b>: ${i.title}\n\n${snippet}\n\n<a href="${c.html_url}">View comment</a>`;
             }
 
