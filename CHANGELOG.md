@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.5.0] - 2026-03-27
+
+### Added
+- **Weibull inter-record delays** — automatically enabled for all TLS connections. Inserts Weibull-distributed delays (k=0.378, λ=1.732ms) between TLS records, making inter-record timing match real HTTPS servers. Combined with DRS record sizing, proxy traffic is now statistically indistinguishable from real HTTPS at both the packet-size and timing levels. No configuration needed — activates automatically with `-D` ([#61](https://github.com/GetPageSpeed/MTProxy/issues/61), [#62](https://github.com/GetPageSpeed/MTProxy/issues/62))
+- New stats: `drs_delays_enabled`, `drs_delays_applied`, `drs_weibull_k`, `drs_weibull_lambda` (plain and Prometheus)
+- E2E test suite for DRS delays (`make test-drs-delays`)
+
 ## [3.4.0] - 2026-03-27
 
 ### Added
