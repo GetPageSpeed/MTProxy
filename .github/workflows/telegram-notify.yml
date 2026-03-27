@@ -1,8 +1,6 @@
 name: Telegram Notifications
 
 on:
-  release:
-    types: [published]
   issues:
     types: [opened]
   issue_comment:
@@ -50,11 +48,7 @@ jobs:
             const event = context.eventName;
             const repo = context.payload.repository.full_name;
 
-            if (event === 'release') {
-              const r = context.payload.release;
-              const body = r.body ? mdToHtml(r.body.substring(0, 2000)) : '';
-              text = `🚀 <b>New Release: ${r.tag_name}</b>\n\n${body}\n\n<a href="${r.html_url}">Release notes</a> | <a href="https://github.com/${repo}">GitHub</a>`;
-            } else if (event === 'issues' && context.payload.action === 'opened') {
+            if (event === 'issues' && context.payload.action === 'opened') {
               // Skip bot-created issues
               if (context.payload.issue.user.type === 'Bot') return;
               const i = context.payload.issue;
