@@ -40,6 +40,9 @@ jobs:
     - name: Run Secret Limit Tests
       run: make test-secret-limit
 
+    - name: Run DRS Delays Tests
+      run: make test-drs-delays
+
   test-arm64:
     runs-on: ubuntu-24.04-arm
     steps:

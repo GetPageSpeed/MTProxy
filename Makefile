@@ -59,7 +59,7 @@ DEPDIRS := ${DEP} $(addprefix ${DEP}/,${PROJECTS})
 ALLDIRS := ${DEPDIRS} ${OBJDIRS}
 
 
-.PHONY:	all clean lint tests test test-tls test-multi-secret test-secret-limit test-ip-acl docker-image-amd64 docker-run-help-amd64 docker-image-arm64 docker-run-help-arm64 fuzz fuzz-run
+.PHONY:	all clean lint tests test test-tls test-multi-secret test-secret-limit test-ip-acl test-drs-delays docker-image-amd64 docker-run-help-amd64 docker-image-arm64 docker-run-help-arm64 fuzz fuzz-run
 
 EXELIST	:= ${EXE}/mtproto-proxy
 
@@ -225,6 +225,19 @@ test-ip-acl:
 		docker compose -f tests/docker-compose.ip-acl-test.yml logs mtproxy; \
 		docker compose -f tests/docker-compose.ip-acl-test.yml down -v; exit 1)
 	docker compose -f tests/docker-compose.ip-acl-test.yml down -v
+
+test-drs-delays:
+	@if [ -z "$$MTPROXY_SECRET" ]; then \
+		export MTPROXY_SECRET=$$(head -c 16 /dev/urandom | xxd -ps); \
+		echo "Generated MTPROXY_SECRET: $$MTPROXY_SECRET"; \
+	fi && \
+	export MTPROXY_SECRET=$${MTPROXY_SECRET:-$$(head -c 16 /dev/urandom | xxd -ps)} && \
+	echo "Using secret: $$MTPROXY_SECRET" && \
+	timeout 300s docker compose -f tests/docker-compose.drs-delays-test.yml up --build --exit-code-from tester || \
+		(echo "DRS delays test timed out or failed"; \
+		docker compose -f tests/docker-compose.drs-delays-test.yml logs mtproxy; \
+		docker compose -f tests/docker-compose.drs-delays-test.yml down; exit 1)
+	docker compose -f tests/docker-compose.drs-delays-test.yml down
 
 FUZZ_DURATION ?= 60
 

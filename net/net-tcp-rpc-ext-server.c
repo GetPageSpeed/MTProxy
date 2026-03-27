@@ -71,6 +71,7 @@
 
 int tcp_rpcs_compact_parse_execute (connection_job_t c);
 int tcp_rpcs_ext_alarm (connection_job_t c);
+static int tcp_rpcs_ext_drs_alarm (connection_job_t c);
 int tcp_rpcs_ext_init_accepted (connection_job_t c);
 
 conn_type_t ct_tcp_rpc_ext_server = {
@@ -104,7 +105,7 @@ conn_type_t ct_tcp_rpc_ext_server_drs = {
   .write_packet = tcp_rpc_write_packet_compact,
   .connected = server_failed,
   .wakeup = tcp_rpcs_wakeup,
-  .alarm = tcp_rpcs_ext_alarm,
+  .alarm = tcp_rpcs_ext_drs_alarm,
   .crypto_init = aes_crypto_ctr128_init,
   .crypto_free = aes_crypto_free,
   .crypto_encrypt_output = cpu_tcp_aes_crypto_ctr128_encrypt_output_drs,
@@ -212,6 +213,7 @@ conn_type_t ct_direct_client_drs = {
   .close = tcp_direct_close,
   .write_packet = tcp_proxy_pass_write_packet,
   .connected = server_noop,
+  .alarm = tcp_rpcs_ext_drs_alarm,
   .crypto_init = aes_crypto_ctr128_init,
   .crypto_free = aes_crypto_free,
   .crypto_encrypt_output = cpu_tcp_aes_crypto_ctr128_encrypt_output_drs,
@@ -449,6 +451,7 @@ static int direct_connect_to_dc (connection_job_t C, int target_dc) {
     struct drs_state *drs = DRS_STATE (C);
     drs->record_index = 0;
     drs->last_record_time = precise_now;
+    drs->delay_pending = 0;
   } else {
     c->type = &ct_direct_client;
   }
@@ -1310,10 +1313,32 @@ static int proxy_connection (connection_job_t C, const struct domain_info *info)
 int tcp_rpcs_ext_alarm (connection_job_t C) {
   struct tcp_rpc_data *D = TCP_RPC_DATA (C);
   if (D->in_packet_num == -3 && default_domain_info != NULL) {
-    return proxy_connection (C, default_domain_info);  
+    return proxy_connection (C, default_domain_info);
   } else {
     return 0;
   }
+}
+
+/* DRS alarm handler: handles both handshake timeout and inter-record delay resume.
+   Both JS_RUN and JS_ALARM run on the NET-CPU thread, so calling read_write is safe. */
+static int tcp_rpcs_ext_drs_alarm (connection_job_t C) {
+  struct tcp_rpc_data *D = TCP_RPC_DATA (C);
+
+  /* Handshake timeout (pre-handshake state) */
+  if (D->in_packet_num == -3 && default_domain_info != NULL) {
+    return proxy_connection (C, default_domain_info);
+  }
+
+  /* DRS delay resume: timer fired, process next record */
+  struct connection_info *c = CONN_INFO (C);
+  if (c->flags & C_IS_TLS) {
+    struct drs_state *drs = DRS_STATE (C);
+    if (drs->delay_pending) {
+      drs->delay_pending = 0;
+      c->type->read_write (C);
+    }
+  }
+  return 0;
 }
 
 int tcp_rpcs_ext_init_accepted (connection_job_t C) {
@@ -1692,6 +1717,7 @@ int tcp_rpcs_compact_parse_execute (connection_job_t C) {
           struct drs_state *drs = DRS_STATE (C);
           drs->record_index = 0;
           drs->last_record_time = precise_now;
+          drs->delay_pending = 0;
           vkprintf (1, "DRS activated for TLS connection\n");
         }
         if (direct_mode) {
