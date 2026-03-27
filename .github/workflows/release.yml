@@ -76,3 +76,26 @@ jobs:
         with:
           files: release/*
           body_path: release-notes.md
+
+      - name: Notify Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        if: env.TELEGRAM_BOT_TOKEN != ''
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          BODY=$(cat release-notes.md | head -c 2000)
+          # Convert Markdown to Telegram HTML
+          BODY=$(echo "$BODY" | sed \
+            -e 's/&/\&amp;/g' \
+            -e 's/</\&lt;/g' \
+            -e 's/>/\&gt;/g' \
+            -e 's/^###* \(.*\)$/<b>\1<\/b>/g' \
+            -e 's/`\([^`]*\)`/<code>\1<\/code>/g' \
+            -e 's/\*\*\([^*]*\)\*\*/<b>\1<\/b>/g')
+          TEXT=$(printf '🚀 <b>New Release: %s</b>\n\n%s\n\n<a href="https://github.com/%s/releases/tag/%s">Release notes</a> | <a href="https://github.com/%s">GitHub</a>' \
+            "$TAG" "$BODY" "${{ github.repository }}" "$TAG" "${{ github.repository }}")
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -n --arg chat_id "$TELEGRAM_CHAT_ID" --arg text "$TEXT" \
+              '{chat_id: $chat_id, text: $text, parse_mode: "HTML", disable_web_page_preview: true}')"
