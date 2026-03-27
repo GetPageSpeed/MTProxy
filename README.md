@@ -39,7 +39,7 @@ The table below compares it with the original and the two main third-party alter
 | ***Censorship resistance*** | | | | |
 | Custom TLS backend (TCP splitting) | Yes | Yes | No | Yes |
 | Dynamic Record Sizing (DRS) | No | Yes | Yes | No |
-| Domain fronting / traffic mimicry | No | No | Yes | Yes |
+| Traffic mimicry (DRS + timing) | No | Yes | Yes | No |
 | SOCKS5 upstream proxy | No | No | Yes | Yes |
 | ***Access control*** | | | | |
 | IP blocklist / allowlist | No | Yes | Yes | No |
