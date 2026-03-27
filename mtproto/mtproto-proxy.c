@@ -65,6 +65,7 @@
 #include "engine/engine.h"
 #include "engine/engine-net.h"
 #include "net/net-ip-acl.h"
+#include "net/net-tcp-drs.h"
 
 #ifndef COMMIT
 #define COMMIT "unknown"
@@ -414,6 +415,8 @@ struct worker_stats {
   long long ext_connections, ext_connections_created;
   long long http_queries, http_bad_headers;
 
+  long long drs_delays_applied;
+
   long long per_secret_connections[16];
   long long per_secret_connections_created[16];
   long long per_secret_connections_rejected[16];
@@ -476,6 +479,7 @@ static void update_local_stats_copy (struct worker_stats *S) {
   UPD (ext_connections_created);
   UPD (http_queries);
   UPD (http_bad_headers);
+  UPD (drs_delays_applied);
   { int _i; for (_i = 0; _i < 16; _i++) {
     UPD (per_secret_connections[_i]);
     UPD (per_secret_connections_created[_i]);
@@ -559,6 +563,7 @@ static inline void add_stats (struct worker_stats *W) {
   UPD (ext_connections_created);
   UPD (http_queries);
   UPD (http_bad_headers);
+  UPD (drs_delays_applied);
   { int _i; for (_i = 0; _i < 16; _i++) {
     UPD (per_secret_connections[_i]);
     UPD (per_secret_connections_created[_i]);
@@ -688,6 +693,10 @@ void mtfront_prepare_stats (stats_buffer_t *sb) {
 	     "direct_dc_connections_active\t%lld\n"
 	     "direct_dc_connections_failed\t%lld\n"
 	     "direct_dc_connections_dc_closed\t%lld\n"
+	     "drs_delays_enabled\t%d\n"
+	     "drs_delays_applied\t%lld\n"
+	     "drs_weibull_k\t%.6f\n"
+	     "drs_weibull_lambda\t%.6f\n"
 	     "version\t" VERSION_STR " compiled at " __DATE__ " " __TIME__ " by gcc " __VERSION__ " "
 #ifdef __LP64__
 	     "64-bit"
@@ -759,7 +768,11 @@ void mtfront_prepare_stats (stats_buffer_t *sb) {
 	     S(direct_dc_connections_created),
 	     S(direct_dc_connections_active),
 	     S(direct_dc_connections_failed),
-	     S(direct_dc_connections_dc_closed)
+	     S(direct_dc_connections_dc_closed),
+	     drs_delays_enabled,
+	     S(drs_delays_applied),
+	     drs_delay_get_k (),
+	     drs_delay_get_lambda ()
   );
 
   { int _sc = tcp_rpcs_get_ext_secret_count();
@@ -859,7 +872,16 @@ void mtfront_prepare_prometheus_stats (stats_buffer_t *sb) {
 	     "mtproxy_direct_dc_connections_failed_total %lld\n"
 	     "# HELP mtproxy_direct_dc_connections_dc_closed_total Direct DC connections closed by the DC side.\n"
 	     "# TYPE mtproxy_direct_dc_connections_dc_closed_total counter\n"
-	     "mtproxy_direct_dc_connections_dc_closed_total %lld\n",
+	     "mtproxy_direct_dc_connections_dc_closed_total %lld\n"
+	     "# HELP mtproxy_drs_delays_total Total inter-record delays injected.\n"
+	     "# TYPE mtproxy_drs_delays_total counter\n"
+	     "mtproxy_drs_delays_total %lld\n"
+	     "# HELP mtproxy_drs_weibull_k Current Weibull shape parameter.\n"
+	     "# TYPE mtproxy_drs_weibull_k gauge\n"
+	     "mtproxy_drs_weibull_k %.6f\n"
+	     "# HELP mtproxy_drs_weibull_lambda Current Weibull scale parameter (ms).\n"
+	     "# TYPE mtproxy_drs_weibull_lambda gauge\n"
+	     "mtproxy_drs_weibull_lambda %.6f\n",
 	     S(get_queries),
 	     S(tot_forwarded_queries),
 	     S(expired_forwarded_queries),
@@ -880,7 +902,10 @@ void mtfront_prepare_prometheus_stats (stats_buffer_t *sb) {
 	     S(conn.accept_ip_acl_rejected),
 	     S(direct_dc_connections_created),
 	     S(direct_dc_connections_failed),
-	     S(direct_dc_connections_dc_closed)
+	     S(direct_dc_connections_dc_closed),
+	     S(drs_delays_applied),
+	     drs_delay_get_k (),
+	     drs_delay_get_lambda ()
   );
 
   /* gauges */
@@ -2651,6 +2676,7 @@ void mtfront_pre_init (void) {
 
   if (domain_count) {
     tcp_rpc_init_proxy_domains();
+    drs_delays_enabled = 1;
 
     if (workers) {
       kprintf ("It is recommended to not use workers with TLS-transport");
