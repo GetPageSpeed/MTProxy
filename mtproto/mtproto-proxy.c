@@ -120,6 +120,7 @@ static int window_clamp;
 #define	PROXY_MODE_OUT	2
 static int proxy_mode;
 int direct_mode;
+int ipv6_enabled;
 
 #define IS_PROXY_IN	0
 #define IS_PROXY_OUT	1
@@ -416,6 +417,7 @@ struct worker_stats {
   long long http_queries, http_bad_headers;
 
   long long drs_delays_applied;
+  long long drs_delays_skipped;
 
   long long per_secret_connections[16];
   long long per_secret_connections_created[16];
@@ -480,6 +482,7 @@ static void update_local_stats_copy (struct worker_stats *S) {
   UPD (http_queries);
   UPD (http_bad_headers);
   UPD (drs_delays_applied);
+  UPD (drs_delays_skipped);
   { int _i; for (_i = 0; _i < 16; _i++) {
     UPD (per_secret_connections[_i]);
     UPD (per_secret_connections_created[_i]);
@@ -564,6 +567,7 @@ static inline void add_stats (struct worker_stats *W) {
   UPD (http_queries);
   UPD (http_bad_headers);
   UPD (drs_delays_applied);
+  UPD (drs_delays_skipped);
   { int _i; for (_i = 0; _i < 16; _i++) {
     UPD (per_secret_connections[_i]);
     UPD (per_secret_connections_created[_i]);
@@ -695,6 +699,7 @@ void mtfront_prepare_stats (stats_buffer_t *sb) {
 	     "direct_dc_connections_dc_closed\t%lld\n"
 	     "drs_delays_enabled\t%d\n"
 	     "drs_delays_applied\t%lld\n"
+	     "drs_delays_skipped\t%lld\n"
 	     "drs_weibull_k\t%.6f\n"
 	     "drs_weibull_lambda\t%.6f\n"
 	     "version\t" VERSION_STR " compiled at " __DATE__ " " __TIME__ " by gcc " __VERSION__ " "
@@ -771,6 +776,7 @@ void mtfront_prepare_stats (stats_buffer_t *sb) {
 	     S(direct_dc_connections_dc_closed),
 	     drs_delays_enabled,
 	     S(drs_delays_applied),
+	     S(drs_delays_skipped),
 	     drs_delay_get_k (),
 	     drs_delay_get_lambda ()
   );
@@ -876,6 +882,9 @@ void mtfront_prepare_prometheus_stats (stats_buffer_t *sb) {
 	     "# HELP mtproxy_drs_delays_total Total inter-record delays injected.\n"
 	     "# TYPE mtproxy_drs_delays_total counter\n"
 	     "mtproxy_drs_delays_total %lld\n"
+	     "# HELP mtproxy_drs_delays_skipped_total Inter-record delays skipped during bulk transfers.\n"
+	     "# TYPE mtproxy_drs_delays_skipped_total counter\n"
+	     "mtproxy_drs_delays_skipped_total %lld\n"
 	     "# HELP mtproxy_drs_weibull_k Current Weibull shape parameter.\n"
 	     "# TYPE mtproxy_drs_weibull_k gauge\n"
 	     "mtproxy_drs_weibull_k %.6f\n"
@@ -904,6 +913,7 @@ void mtfront_prepare_prometheus_stats (stats_buffer_t *sb) {
 	     S(direct_dc_connections_failed),
 	     S(direct_dc_connections_dc_closed),
 	     S(drs_delays_applied),
+	     S(drs_delays_skipped),
 	     drs_delay_get_k (),
 	     drs_delay_get_lambda ()
   );
@@ -2687,7 +2697,8 @@ void mtfront_pre_init (void) {
     }
   }
 
-  int i, enable_ipv6 = engine_check_ipv6_enabled () ? SM_IPV6 : 0;
+  ipv6_enabled = engine_check_ipv6_enabled ();
+  int i, enable_ipv6 = ipv6_enabled ? SM_IPV6 : 0;
 
   for (i = 0; i < http_ports_num; i++) {
     http_sfd[i] = server_socket (http_port[i], engine_state->settings_addr, engine_get_backlog (), enable_ipv6);

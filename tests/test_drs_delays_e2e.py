@@ -184,6 +184,17 @@ def test_delays_applied_after_data():
     print(f"  OK: drs_delays_applied {before} -> {after} (delta={after - before})")
 
 
+def test_delays_skipped_stat_exists():
+    """Verify drs_delays_skipped appears in stats."""
+    host = os.environ.get("MTPROXY_HOST", "mtproxy")
+    stats_port = int(os.environ.get("MTPROXY_STATS_PORT", "8888"))
+
+    stats = get_stats(host, stats_port)
+    val = parse_stat(stats, "drs_delays_skipped")
+    assert val is not None, "drs_delays_skipped not found in stats"
+    print(f"  OK: drs_delays_skipped={val}")
+
+
 def test_prometheus_drs_metrics():
     """Verify DRS metrics appear in Prometheus output."""
     host = os.environ.get("MTPROXY_HOST", "mtproxy")
@@ -191,6 +202,7 @@ def test_prometheus_drs_metrics():
 
     stats = get_stats(host, stats_port, path="/metrics")
     assert "mtproxy_drs_delays_total" in stats, "Missing mtproxy_drs_delays_total"
+    assert "mtproxy_drs_delays_skipped_total" in stats, "Missing mtproxy_drs_delays_skipped_total"
     assert "mtproxy_drs_weibull_k" in stats, "Missing mtproxy_drs_weibull_k"
     assert "mtproxy_drs_weibull_lambda" in stats, "Missing mtproxy_drs_weibull_lambda"
     print("  OK: Prometheus metrics present")
@@ -220,6 +232,7 @@ def main():
         ("weibull_params_in_stats", test_weibull_params_in_stats),
         ("tls_handshake_with_delays", test_tls_handshake_with_delays),
         ("delays_applied_after_data", test_delays_applied_after_data),
+        ("delays_skipped_stat_exists", test_delays_skipped_stat_exists),
         ("prometheus_drs_metrics", test_prometheus_drs_metrics),
     ]
 

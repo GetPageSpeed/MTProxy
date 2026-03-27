@@ -44,6 +44,12 @@
 #define DRS_NOISE_RANGE  201
 #define DRS_NOISE_OFFSET 100
 
+/* Skip inter-record delay if more than one max-size record remains.
+   Bulk transfers (large files) keep the buffer above this threshold,
+   so delays only fire near the tail — matching real HTTPS servers
+   that burst content at TCP speed and vary timing only between responses. */
+#define DRS_BURST_THRESHOLD  DRS_SIZE_MAX
+
 /* Default Weibull parameters (from mtg's ok.ru measurements) */
 #define DRS_DEFAULT_K      0.378
 #define DRS_DEFAULT_LAMBDA 1.732   /* milliseconds */
@@ -52,6 +58,7 @@
 
 int drs_delays_enabled = 0;
 long long drs_delays_applied = 0;
+long long drs_delays_skipped = 0;
 
 static const double current_k = DRS_DEFAULT_K;
 static const double current_lambda = DRS_DEFAULT_LAMBDA;
@@ -140,13 +147,17 @@ int cpu_tcp_aes_crypto_ctr128_encrypt_output_drs (connection_job_t C) /* {{{ */ 
 
     assert (rwm_encrypt_decrypt_to (&c->out, &c->out_p, len, T->write_aeskey, 1) == len);
 
-    /* Inter-record delay: emit one record, schedule timer for the next */
+    /* Inter-record delay: skip during bulk transfers for full throughput */
     if (drs_delays_enabled && (c->flags & C_IS_TLS) && c->out.total_bytes > 0) {
+      if (c->out.total_bytes > DRS_BURST_THRESHOLD) {
+        drs_delays_skipped++;
+        continue;
+      }
       double delay = drs_sample_delay ();
       drs->delay_pending = 1;
       drs_delays_applied++;
       job_timer_insert (C, precise_now + delay);
-      vkprintf (2, "DRS delay: %.3f ms before next record\n", delay * 1000.0);
+      vkprintf (2, "DRS delay: %.3f ms before next record (%d bytes remain)\n", delay * 1000.0, c->out.total_bytes);
       return 0;  /* remaining data will be processed when the timer fires */
     }
   }
