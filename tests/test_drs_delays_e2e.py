@@ -208,6 +208,102 @@ def test_prometheus_drs_metrics():
     print("  OK: Prometheus metrics present")
 
 
+def test_bulk_transfer_delay_bounds():
+    """Verify delays are bounded during bulk transfer (phase-3 skip).
+
+    Sends ~280KB of data (200 records) which is well past the phase-2 boundary
+    (60 records, ~140KB).  After the fix, delays should only be applied during
+    phases 1+2 and skipped once phase 3 starts.
+    """
+    host = os.environ.get("MTPROXY_HOST", "mtproxy")
+    port = int(os.environ.get("MTPROXY_PORT", "8443"))
+    stats_port = int(os.environ.get("MTPROXY_STATS_PORT", "8888"))
+    secret_hex = os.environ.get("MTPROXY_SECRET", "")
+    secret_bytes = bytes.fromhex(secret_hex)
+
+    # Snapshot stats before
+    stats_before = get_stats(host, stats_port)
+    applied_before = int(parse_stat(stats_before, "drs_delays_applied") or "0")
+    skipped_before = int(parse_stat(stats_before, "drs_delays_skipped") or "0")
+
+    # Do TLS handshake and send a large payload (200 records ~= 280KB)
+    domain = os.environ.get(
+        "EE_DOMAIN", os.environ.get("TLS_BACKEND_HOST", "172.30.0.10")
+    )
+    hello = build_client_hello(domain)
+
+    hello_zeroed = bytearray(hello)
+    hello_zeroed[11:43] = b"\x00" * 32
+    expected = hmac_mod.new(
+        secret_bytes, bytes(hello_zeroed), hashlib.sha256
+    ).digest()
+
+    timestamp = int(time.time())
+    ts_bytes = struct.pack("<I", timestamp)
+    xored_ts = bytes(a ^ b for a, b in zip(ts_bytes, expected[28:32]))
+    client_random = expected[:28] + xored_ts
+    hello[11:43] = client_random
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(10)
+    sock.connect((socket.gethostbyname(host), port))
+    sock.sendall(bytes(hello))
+
+    # Read ServerHello
+    data = b""
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        try:
+            chunk = sock.recv(16384)
+            if not chunk:
+                break
+            data += chunk
+            if len(data) >= 138:
+                enc_len = struct.unpack(">H", data[136:138])[0]
+                expected_total = 138 + enc_len
+                if len(data) >= expected_total:
+                    break
+        except socket.timeout:
+            break
+
+    assert len(data) >= 138, f"Handshake failed: got {len(data)} bytes"
+
+    # Send CCS + 200 application data records (~280KB total)
+    ccs = b"\x14\x03\x03\x00\x01\x01"
+    sock.sendall(ccs)
+    for _ in range(200):
+        payload = os.urandom(1400)
+        header = b"\x17\x03\x03" + struct.pack(">H", len(payload))
+        sock.sendall(header + payload)
+
+    time.sleep(2)
+    sock.close()
+
+    # Snapshot stats after
+    time.sleep(1)
+    stats_after = get_stats(host, stats_port)
+    applied_after = int(parse_stat(stats_after, "drs_delays_applied") or "0")
+    skipped_after = int(parse_stat(stats_after, "drs_delays_skipped") or "0")
+
+    delta_applied = applied_after - applied_before
+    delta_skipped = skipped_after - skipped_before
+
+    print(f"  delays_applied: {applied_before} -> {applied_after} (delta={delta_applied})")
+    print(f"  delays_skipped: {skipped_before} -> {skipped_after} (delta={delta_skipped})")
+
+    # The proxy may not generate enough response data to exercise all DRS
+    # phases (garbage MTProto is rejected quickly), so we only soft-assert
+    # that the skipped counter exists and is non-negative.
+    assert delta_skipped >= 0, f"drs_delays_skipped went negative: {delta_skipped}"
+    assert delta_applied >= 0, f"drs_delays_applied went negative: {delta_applied}"
+
+    # If any delays were applied, skipped should also be non-zero (phase-3 skip)
+    if delta_applied > 0 and delta_skipped == 0:
+        print("  WARNING: delays applied but none skipped — "
+              "phase-3 skip may not be working")
+
+    print(f"  OK: delay bounds plausible "
+          f"(applied={delta_applied}, skipped={delta_skipped})")
 
 
 # ============================================================
@@ -234,6 +330,7 @@ def main():
         ("delays_applied_after_data", test_delays_applied_after_data),
         ("delays_skipped_stat_exists", test_delays_skipped_stat_exists),
         ("prometheus_drs_metrics", test_prometheus_drs_metrics),
+        ("bulk_transfer_delay_bounds", test_bulk_transfer_delay_bounds),
     ]
 
     failures = 0

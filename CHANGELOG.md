@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.5.2] - 2026-03-28
+
+### Fixed
+- **DRS delays still throttled sustained downloads** — delays are now limited to slow-start phases only (first ~60 records, ~140KB). Once the connection reaches phase 3 (max-size TLS records), all delays are skipped. The DRS counter resets after 1s of inactivity, so new responses still get realistic slow-start timing. This fully resolves media download degradation reported in [#70](https://github.com/GetPageSpeed/MTProxy/issues/70)
+
+### Added
+- **Media download E2E tests** — CI now downloads pre-saved files (1 MB, 20 MB, 100 MB) through both obfuscated2 and fake-TLS proxy modes, verifying data integrity and throughput. Catches DRS delay regressions that throttle large transfers
+- DRS bulk transfer delay bounds test in Docker test suite
+
 ## [3.5.1] - 2026-03-27
 
 ### Fixed

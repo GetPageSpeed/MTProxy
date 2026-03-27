@@ -10,3 +10,5 @@ fuzz/*.o
 fuzz/crash-*
 fuzz/oom-*
 fuzz/timeout-*
+tests/regenerate_*.py
+tests/seed_test_media.py
