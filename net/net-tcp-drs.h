@@ -28,6 +28,7 @@ int cpu_tcp_aes_crypto_ctr128_encrypt_output_drs (connection_job_t C);
    Delays are automatically enabled when DRS is active (TLS mode). */
 extern int drs_delays_enabled;
 extern long long drs_delays_applied;
+extern long long drs_delays_skipped;
 
 double drs_delay_get_k (void);
 double drs_delay_get_lambda (void);

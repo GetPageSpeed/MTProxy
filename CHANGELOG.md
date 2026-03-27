@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.5.1] - 2026-03-27
+
+### Fixed
+- **Large file downloads degraded by DRS inter-record delays** — delays are now automatically skipped during bulk transfers when the output buffer exceeds one max-size TLS record (16 KB). Small responses still receive Weibull-distributed delays for anti-fingerprinting. This is more realistic than always-delay approaches (e.g. mtg): real HTTPS servers burst bulk content at TCP speed and only vary timing between responses. New stat: `drs_delays_skipped` / `mtproxy_drs_delays_skipped_total` ([#70](https://github.com/GetPageSpeed/MTProxy/issues/70))
+
 ## [3.5.0] - 2026-03-27
 
 ### Added
