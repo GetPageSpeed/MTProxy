@@ -178,6 +178,7 @@ int tcp_proxy_pass_write_packet (connection_job_t C, struct raw_message *raw) {
 extern int direct_mode;
 extern int workers;
 extern long long direct_dc_connections_created, direct_dc_connections_active;
+extern long long direct_dc_connections_failed, direct_dc_connections_dc_closed;
 extern long long per_secret_connections[16], per_secret_connections_created[16];
 extern long long per_secret_connections_rejected[16];
 
@@ -278,13 +279,25 @@ static int tcp_direct_dc_parse_execute (connection_job_t C) {
 
 static int tcp_direct_close (connection_job_t C, int who) {
   struct connection_info *c = CONN_INFO(C);
-  vkprintf (1, "closing direct connection #%d %s:%d -> %s:%d\n", c->fd, show_our_ip (C), c->our_port, show_remote_ip (C), c->remote_port);
-  if ((c->type == &ct_direct_client || c->type == &ct_direct_client_drs) && direct_dc_connections_active > 0) {
+  int is_client = (c->type == &ct_direct_client || c->type == &ct_direct_client_drs);
+  int is_dc = (c->type == &ct_direct_dc);
+  int target_dc = TCP_RPC_DATA(C)->extra_int4;
+  double duration = precise_now - c->query_start_time;
+
+  vkprintf (1, "direct: closing %s connection #%d (DC %d) after %.1fs, %s:%d -> %s:%d, who=%d\n",
+            is_client ? "client" : "DC", c->fd, target_dc, duration,
+            show_our_ip (C), c->our_port, show_remote_ip (C), c->remote_port, who);
+
+  if (is_client && direct_dc_connections_active > 0) {
     direct_dc_connections_active--;
     int sid = TCP_RPC_DATA(C)->extra_int2;
     if (sid > 0 && sid <= 16) {
       per_secret_connections[sid - 1]--;
     }
+  }
+  if (is_dc && who != 0) {
+    /* DC side closed unexpectedly (not by us tearing down the pair) */
+    direct_dc_connections_dc_closed++;
   }
   if (c->extra) {
     job_t E = PTR_MOVE (c->extra);
@@ -389,7 +402,8 @@ static int direct_connect_to_dc (connection_job_t C, int target_dc) {
 
   const struct dc_address *dc = direct_dc_lookup (target_dc);
   if (!dc) {
-    vkprintf (1, "direct mode: unknown DC %d, closing connection\n", target_dc);
+    kprintf ("direct mode: unknown DC %d, closing connection\n", target_dc);
+    direct_dc_connections_failed++;
     fail_connection (C, -1);
     return 0;
   }
@@ -408,6 +422,7 @@ static int direct_connect_to_dc (connection_job_t C, int target_dc) {
   int cfd = client_socket (dc->ipv4, dc->port, 0);
   if (cfd < 0) {
     kprintf ("direct mode: failed to connect to DC %d: %m\n", target_dc);
+    direct_dc_connections_failed++;
     fail_connection (C, -27);
     return 0;
   }
@@ -417,7 +432,8 @@ static int direct_connect_to_dc (connection_job_t C, int target_dc) {
                                     ntohl (dc->ipv4), NULL, dc->port);
 
   if (!EJ) {
-    kprintf ("direct mode: failed to create DC connection\n");
+    kprintf ("direct mode: failed to create DC connection for DC %d\n", target_dc);
+    direct_dc_connections_failed++;
     job_decref_f (C);
     fail_connection (C, -37);
     return 0;

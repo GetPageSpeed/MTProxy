@@ -407,6 +407,7 @@ struct worker_stats {
   long long tot_forwarded_simple_acks, dropped_simple_acks;
   long long mtproto_proxy_errors;
   long long direct_dc_connections_created, direct_dc_connections_active;
+  long long direct_dc_connections_failed, direct_dc_connections_dc_closed;
 
   long long connections_failed_lru, connections_failed_flood;
 
@@ -433,6 +434,7 @@ long long tot_forwarded_responses, dropped_responses;
 long long tot_forwarded_simple_acks, dropped_simple_acks;
 long long mtproto_proxy_errors;
 long long direct_dc_connections_created, direct_dc_connections_active;
+long long direct_dc_connections_failed, direct_dc_connections_dc_closed;
 
 char proxy_tag[16];
 int proxy_tag_set;
@@ -466,10 +468,12 @@ static void update_local_stats_copy (struct worker_stats *S) {
   UPD (mtproto_proxy_errors);
   UPD (direct_dc_connections_created);
   UPD (direct_dc_connections_active);
+  UPD (direct_dc_connections_failed);
+  UPD (direct_dc_connections_dc_closed);
   UPD (connections_failed_lru);
   UPD (connections_failed_flood);
-  UPD (ext_connections); 
-  UPD (ext_connections_created); 
+  UPD (ext_connections);
+  UPD (ext_connections_created);
   UPD (http_queries);
   UPD (http_bad_headers);
   { int _i; for (_i = 0; _i < 16; _i++) {
@@ -547,6 +551,8 @@ static inline void add_stats (struct worker_stats *W) {
   UPD (mtproto_proxy_errors);
   UPD (direct_dc_connections_created);
   UPD (direct_dc_connections_active);
+  UPD (direct_dc_connections_failed);
+  UPD (direct_dc_connections_dc_closed);
   UPD (connections_failed_lru);
   UPD (connections_failed_flood);
   UPD (ext_connections);
@@ -680,6 +686,8 @@ void mtfront_prepare_stats (stats_buffer_t *sb) {
 	     "direct_mode\t%d\n"
 	     "direct_dc_connections_created\t%lld\n"
 	     "direct_dc_connections_active\t%lld\n"
+	     "direct_dc_connections_failed\t%lld\n"
+	     "direct_dc_connections_dc_closed\t%lld\n"
 	     "version\t" VERSION_STR " compiled at " __DATE__ " " __TIME__ " by gcc " __VERSION__ " "
 #ifdef __LP64__
 	     "64-bit"
@@ -749,7 +757,9 @@ void mtfront_prepare_stats (stats_buffer_t *sb) {
 	     proxy_tag_set,
 	     direct_mode,
 	     S(direct_dc_connections_created),
-	     S(direct_dc_connections_active)
+	     S(direct_dc_connections_active),
+	     S(direct_dc_connections_failed),
+	     S(direct_dc_connections_dc_closed)
   );
 
   { int _sc = tcp_rpcs_get_ext_secret_count();
@@ -843,7 +853,13 @@ void mtfront_prepare_prometheus_stats (stats_buffer_t *sb) {
 	     "mtproxy_ip_acl_rejected_total %lld\n"
 	     "# HELP mtproxy_direct_dc_connections_created_total Direct DC connections created.\n"
 	     "# TYPE mtproxy_direct_dc_connections_created_total counter\n"
-	     "mtproxy_direct_dc_connections_created_total %lld\n",
+	     "mtproxy_direct_dc_connections_created_total %lld\n"
+	     "# HELP mtproxy_direct_dc_connections_failed_total Direct DC connections that failed to establish.\n"
+	     "# TYPE mtproxy_direct_dc_connections_failed_total counter\n"
+	     "mtproxy_direct_dc_connections_failed_total %lld\n"
+	     "# HELP mtproxy_direct_dc_connections_dc_closed_total Direct DC connections closed by the DC side.\n"
+	     "# TYPE mtproxy_direct_dc_connections_dc_closed_total counter\n"
+	     "mtproxy_direct_dc_connections_dc_closed_total %lld\n",
 	     S(get_queries),
 	     S(tot_forwarded_queries),
 	     S(expired_forwarded_queries),
@@ -862,7 +878,9 @@ void mtfront_prepare_prometheus_stats (stats_buffer_t *sb) {
 	     S(http_queries),
 	     S(http_bad_headers),
 	     S(conn.accept_ip_acl_rejected),
-	     S(direct_dc_connections_created)
+	     S(direct_dc_connections_created),
+	     S(direct_dc_connections_failed),
+	     S(direct_dc_connections_dc_closed)
   );
 
   /* gauges */
