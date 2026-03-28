@@ -37,8 +37,13 @@
 #define DRS_SIZE_ACCEL   4096   /* intermediate ramp */
 #define DRS_SIZE_MAX    16144   /* 16384 - TLS record overhead */
 
-/* Inactivity timeout before resetting DRS counter (seconds) */
+/* Inactivity timeout before resetting DRS record sizing (seconds) */
 #define DRS_RESET_AFTER  1.0
+
+/* Extended inactivity timeout before resetting DRS delay counter (seconds).
+   Short idle gaps (1-10s between sticker loads) don't restart delays.
+   Extended idle (>30s) re-enables delays for fresh DPI camouflage. */
+#define DRS_DELAY_RESET_AFTER  30.0
 
 /* Noise range: +-100 bytes */
 #define DRS_NOISE_RANGE  201
@@ -122,10 +127,14 @@ int cpu_tcp_aes_crypto_ctr128_encrypt_output_drs (connection_job_t C) /* {{{ */ 
     if (c->flags & C_IS_TLS) {
       assert (c->left_tls_packet_length >= 0);
 
-      /* Reset record counter after inactivity */
+      /* Reset record sizing after short inactivity */
       if (precise_now - drs->last_record_time > DRS_RESET_AFTER) {
         drs->record_index = 0;
         drs->delay_pending = 0;
+      }
+      /* Reset delay counter after extended inactivity */
+      if (precise_now - drs->last_record_time > DRS_DELAY_RESET_AFTER) {
+        drs->total_records = 0;
       }
 
       int max_len = drs_record_size (drs->record_index);
@@ -142,6 +151,7 @@ int cpu_tcp_aes_crypto_ctr128_encrypt_output_drs (connection_job_t C) /* {{{ */ 
                 drs->record_index);
 
       drs->record_index++;
+      drs->total_records++;
       drs->last_record_time = precise_now;
     }
 
@@ -151,7 +161,7 @@ int cpu_tcp_aes_crypto_ctr128_encrypt_output_drs (connection_job_t C) /* {{{ */ 
        (phase 3 = max-size records = no real server adds delays here).
        Delays only apply during slow-start phases 1+2 (~140KB, ~60 records). */
     if (drs_delays_enabled && (c->flags & C_IS_TLS) && c->out.total_bytes > 0) {
-      if (c->out.total_bytes > DRS_BURST_THRESHOLD || drs->record_index >= DRS_PHASE2_END) {
+      if (c->out.total_bytes > DRS_BURST_THRESHOLD || drs->total_records >= DRS_PHASE2_END) {
         drs_delays_skipped++;
         continue;
       }

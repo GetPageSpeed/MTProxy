@@ -177,6 +177,7 @@ int tcp_proxy_pass_write_packet (connection_job_t C, struct raw_message *raw) {
  */
 
 extern int direct_mode;
+extern int ipv6_enabled;
 extern int workers;
 extern long long direct_dc_connections_created, direct_dc_connections_active;
 extern long long direct_dc_connections_failed, direct_dc_connections_dc_closed;
@@ -410,8 +411,21 @@ static int direct_connect_to_dc (connection_job_t C, int target_dc) {
     return 0;
   }
 
-  vkprintf (1, "direct mode: routing client (fd=%d) to DC %d (%s:%d)\n",
-            c->fd, target_dc, inet_ntoa (*(struct in_addr *)&dc->ipv4), dc->port);
+  static const unsigned char zero_ipv6[16] = {};
+  int use_ipv6 = ipv6_enabled && memcmp (dc->ipv6, zero_ipv6, 16) != 0;
+
+  if (use_ipv6) {
+    char addr_buf[INET6_ADDRSTRLEN];
+    inet_ntop (AF_INET6, dc->ipv6, addr_buf, sizeof (addr_buf));
+    vkprintf (1, "direct mode: routing client (fd=%d) to DC %d ([%s]:%d) via IPv6\n",
+              c->fd, target_dc, addr_buf, dc->port);
+  } else {
+    if (ipv6_enabled) {
+      kprintf ("direct mode: DC %d has no IPv6 address, falling back to IPv4\n", target_dc);
+    }
+    vkprintf (1, "direct mode: routing client (fd=%d) to DC %d (%s:%d)\n",
+              c->fd, target_dc, inet_ntoa (*(struct in_addr *)&dc->ipv4), dc->port);
+  }
 
   static int direct_types_checked;
   if (!direct_types_checked) {
@@ -421,7 +435,12 @@ static int direct_connect_to_dc (connection_job_t C, int target_dc) {
     direct_types_checked = 1;
   }
 
-  int cfd = client_socket (dc->ipv4, dc->port, 0);
+  int cfd;
+  if (use_ipv6) {
+    cfd = client_socket_ipv6 (dc->ipv6, dc->port, SM_IPV6);
+  } else {
+    cfd = client_socket (dc->ipv4, dc->port, 0);
+  }
   if (cfd < 0) {
     kprintf ("direct mode: failed to connect to DC %d: %m\n", target_dc);
     direct_dc_connections_failed++;
@@ -430,8 +449,14 @@ static int direct_connect_to_dc (connection_job_t C, int target_dc) {
   }
 
   job_incref (C);
-  job_t EJ = alloc_new_connection (cfd, NULL, NULL, ct_outbound, &ct_direct_dc, C,
-                                    ntohl (dc->ipv4), NULL, dc->port);
+  job_t EJ;
+  if (use_ipv6) {
+    EJ = alloc_new_connection (cfd, NULL, NULL, ct_outbound, &ct_direct_dc, C,
+                                0, (unsigned char *)dc->ipv6, dc->port);
+  } else {
+    EJ = alloc_new_connection (cfd, NULL, NULL, ct_outbound, &ct_direct_dc, C,
+                                ntohl (dc->ipv4), NULL, dc->port);
+  }
 
   if (!EJ) {
     kprintf ("direct mode: failed to create DC connection for DC %d\n", target_dc);
@@ -450,6 +475,7 @@ static int direct_connect_to_dc (connection_job_t C, int target_dc) {
     c->type = &ct_direct_client_drs;
     struct drs_state *drs = DRS_STATE (C);
     drs->record_index = 0;
+    drs->total_records = 0;
     drs->last_record_time = precise_now;
     drs->delay_pending = 0;
   } else {
@@ -463,11 +489,8 @@ static int direct_connect_to_dc (connection_job_t C, int target_dc) {
   direct_dc_connections_created++;
   direct_dc_connections_active++;
 
-  int sid = TCP_RPC_DATA(C)->extra_int2;
-  if (sid > 0 && sid <= 16) {
-    per_secret_connections[sid - 1]++;
-    per_secret_connections_created[sid - 1]++;
-  }
+  /* Per-secret increment already done in tcp_rpcs_compact_parse_execute
+     before direct_connect_to_dc is called. */
 
   assert (CONN_INFO(EJ)->io_conn);
   unlock_job (JOB_REF_PASS (EJ));
@@ -1266,6 +1289,11 @@ static int is_allowed_timestamp (int timestamp) {
 
 static int proxy_connection (connection_job_t C, const struct domain_info *info) {
   struct connection_info *c = CONN_INFO(C);
+
+  /* No longer an MTProxy connection — clear secret tracking to prevent
+     spurious decrement in mtproto_ext_rpc_close on failure paths. */
+  TCP_RPC_DATA(C)->extra_int2 = 0;
+
   assert (check_conn_functions (&ct_proxy_pass, 0) >= 0);
 
   const char zero[16] = {};
@@ -1705,6 +1733,17 @@ int tcp_rpcs_compact_parse_execute (connection_job_t C) {
           }
         }
 
+        /* Per-secret connection counter: increment here for all modes.
+           Decrement: mtproto_ext_rpc_close (non-direct / direct failure)
+           or tcp_direct_close (direct success). */
+        {
+          int _sid = D->extra_int2;
+          if (_sid > 0 && _sid <= 16) {
+            per_secret_connections[_sid - 1]++;
+            per_secret_connections_created[_sid - 1]++;
+          }
+        }
+
         /* Activate DRS for TLS connections */
         if (c->flags & C_IS_TLS) {
           static int drs_types_checked;
@@ -1716,6 +1755,7 @@ int tcp_rpcs_compact_parse_execute (connection_job_t C) {
           c->type = &ct_tcp_rpc_ext_server_drs;
           struct drs_state *drs = DRS_STATE (C);
           drs->record_index = 0;
+          drs->total_records = 0;
           drs->last_record_time = precise_now;
           drs->delay_pending = 0;
           vkprintf (1, "DRS activated for TLS connection\n");
@@ -1726,6 +1766,12 @@ int tcp_rpcs_compact_parse_execute (connection_job_t C) {
         continue;
       }
 
+      /* TLS connections have extra_int2 set from the TLS handshake phase.
+         Clear it to prevent spurious decrement in mtproto_ext_rpc_close
+         since we never incremented the per-secret counter. */
+      if (c->flags & C_IS_TLS) {
+        D->extra_int2 = 0;
+      }
       if (ext_secret_cnt > 0) {
         vkprintf (1, "invalid \"random\" 64-byte header, entering global skip mode\n");
         return ((int)0xF0000000u);

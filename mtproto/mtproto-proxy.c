@@ -1375,11 +1375,9 @@ int mtproto_http_close (connection_job_t C, int who) {
 int mtproto_ext_rpc_ready (connection_job_t C) {
   assert ((unsigned) CONN_INFO(C)->fd < MAX_CONNECTIONS);
   vkprintf (3, "ext_rpc connection ready (%d)\n", CONN_INFO(C)->fd);
-  int sid = TCP_RPC_DATA(C)->extra_int2;
-  if (sid > 0 && sid <= 16) {
-    per_secret_connections[sid - 1]++;
-    per_secret_connections_created[sid - 1]++;
-  }
+  /* Per-secret increment is NOT done here — this callback fires at connection
+     acceptance, before the handshake identifies the secret (extra_int2 = 0).
+     The increment happens in tcp_rpcs_compact_parse_execute after handshake. */
   lru_insert_conn (C);
   return 0;
 }

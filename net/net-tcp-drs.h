@@ -14,7 +14,8 @@
 
 /* Per-connection DRS state.  Lives in custom_data after tcp_rpc_data. */
 struct drs_state {
-  int record_index;         /* records sent since last reset */
+  int record_index;         /* records sent since last reset (for sizing) */
+  int total_records;        /* records sent total (for delay decisions, 30s reset) */
   double last_record_time;  /* precise_now when last record was sent */
   int delay_pending;        /* 1 = timer set, waiting before next record */
 };
