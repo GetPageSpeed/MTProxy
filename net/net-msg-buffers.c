@@ -290,6 +290,8 @@ void free_msg_buffers_chunk_internal (struct msg_buffers_chunk *C, struct msg_bu
   __sync_fetch_and_add (&allocated_buffer_chunks, -1);
   MODULE_STAT->allocated_buffer_bytes -= MSG_BUFFERS_CHUNK_SIZE;
 
+  struct mp_queue *bq = C->free_block_queue;
+
   memset (C, 0, sizeof (struct msg_buffers_chunk));
   free (C);
 
@@ -302,9 +304,8 @@ void free_msg_buffers_chunk_internal (struct msg_buffers_chunk *C, struct msg_bu
   if (ChunkSave[si] == C) {
     ChunkSave[si] = NULL;
   }
-  
-  free_mp_queue (C->free_block_queue);
-  C->free_block_queue = NULL;
+
+  free_mp_queue (bq);
 }
 
 
