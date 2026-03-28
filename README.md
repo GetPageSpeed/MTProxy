@@ -68,6 +68,24 @@ The table below compares it with the original and the two main third-party alter
 
 > **Why this fork?** Battle-tested C codebase from the official Telegram repository, with TDLib-validated fake-TLS (verified against the [TDLib source](https://github.com/tdlib/td/blob/master/td/mtproto/TlsInit.cpp)), RPM packaging for enterprise deployment, and the most comprehensive CI pipeline (libFuzzer + Telethon E2E + cppcheck + CodeQL).
 
+### Architecture takeaways
+
+- **This fork (C)** remains the best choice when the priority is maximum protocol fidelity, lowest runtime overhead, and keeping the proven Telegram-derived architecture with production hardening already in place. The trade-off is that memory safety depends on process discipline and tooling rather than the language itself.
+- **Go projects** such as `mtg` are typically easier to maintain and safer than hand-written C in day-to-day development, but garbage collection, scheduler behavior, and a larger runtime make them a less ideal fit for the hottest packet-processing path when you want very tight control over latency and TLS mimicry.
+- **Rust projects** such as `telemt` have the strongest safety story because memory safety is enforced by default, while still allowing C-like performance. The trade-off is implementation complexity, especially in low-level networking, packet framing, and the few places where protocol emulation may still require carefully audited `unsafe` code.
+
+**Best language choice:** for a brand-new implementation, **Rust is the best default choice** if you want the best balance of performance, memory safety, and long-term maintainability. If you need the most battle-tested implementation today, this fork's C codebase is still the practical winner.
+
+**Winning architecture:** if none of the current projects are a perfect fit, the best design is a **Rust data plane with a minimal, MTProto-specific internal architecture**:
+
+1. **Multi-process workers pinned per core** instead of one giant shared runtime, so each worker handles its own epoll/kqueue event loop and failures stay isolated.
+2. **Zero-copy buffer management** with fixed-size slab allocators or pooled arenas for hot packet paths, avoiding unnecessary heap churn.
+3. **Strict control-plane / data-plane split**, where metrics, config reloads, ACL management, and health checks live outside the hot proxy path.
+4. **Protocol-specific state machines** for fake-TLS, replay protection, DRS, and timing behavior, instead of hiding core packet logic behind generic HTTP/TCP abstractions.
+5. **Defense in depth**: constant-time crypto checks, bounded queues, backpressure, fuzzing of parsers, property tests for state machines, sanitizer runs for any `unsafe` code, and CodeQL/static analysis in CI.
+
+In short: **today's operational winner is this fork; the clean-sheet design winner is Rust with a low-level event-driven architecture that keeps the hot path simple, isolated, and heavily fuzz-tested.**
+
 ## Install
 
 ### Quick Install (Recommended)
