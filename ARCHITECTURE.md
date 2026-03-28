@@ -41,12 +41,17 @@ via `mmap`.
 - `epoll` + non-blocking sockets is the most efficient Linux I/O model.
 - Zero-copy buffer design minimises memory copies in the hot path.
 - Comprehensive CI: libFuzzer, ASan, CodeQL, cppcheck, Telethon E2E.
+- Multi-core scaling via `fork()`-based workers (`-M N`) — the same model used
+  by nginx and HAProxy. Each worker runs its own `epoll` loop with independent
+  connection pools, avoiding all lock contention. For an I/O-bound proxy
+  workload this is the optimal design: no shared-state synchronisation overhead,
+  and OS-level process isolation prevents one worker from crashing others.
+  The engine also has an internal job-thread system (`jobs/jobs.c`) that can
+  offload CPU-bound work to background pthreads when needed.
 
 **Weaknesses:**
 - Manual memory management — historical bugs (heap overflow in `CONN_INFO`,
   use-after-free in `free_msg_buffers_chunk_internal`) required careful auditing.
-- Single-threaded per worker — cannot utilise multiple cores within one process
-  without forking.
 - No built-in SOCKS5 upstream chaining.
 
 ### mtg — Go
@@ -162,7 +167,7 @@ under high connection counts.
 |--------|:---:|:---:|:---:|
 | 10K connections | ✅ | ✅ | ✅ |
 | 100K connections | ✅ (multi-worker) | ⚠️ (GC pressure) | ✅ |
-| Multi-core utilisation | `fork()` workers | Automatic (GOMAXPROCS) | Automatic (Tokio threadpool) |
+| Multi-core utilisation | `fork()` workers (`-M N`) — same model as nginx | Automatic (GOMAXPROCS) | Automatic (Tokio threadpool) |
 | Zero-copy I/O | Yes (`readv`/`writev`) | No (Go copies to userspace) | Partial (`bytes::BytesMut`) |
 
 ---
