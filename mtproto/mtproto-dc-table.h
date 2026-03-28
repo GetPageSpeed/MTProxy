@@ -24,7 +24,8 @@
 
 struct dc_address {
   int dc_id;
-  in_addr_t ipv4;       /* network byte order */
+  in_addr_t ipv4;             /* network byte order */
+  unsigned char ipv6[16];     /* network byte order, all-zero if unavailable */
   int port;
 };
 

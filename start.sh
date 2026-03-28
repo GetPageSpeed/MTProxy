@@ -25,9 +25,10 @@ if [ "$DIRECT_MODE" != "true" ]; then
         NEEDS_DOWNLOAD=1
     fi
 
+    PROXY_CONFIG_URL=${PROXY_CONFIG_URL:-https://core.telegram.org/getProxyConfig}
     if [ "$NEEDS_DOWNLOAD" -eq 1 ]; then
-        echo "Downloading proxy config..."
-        if curl --connect-timeout 10 --max-time 30 --retry 3 --retry-delay 2 -fsSL https://core.telegram.org/getProxyConfig -o "$CONFIG_PATH.tmp"; then
+        echo "Downloading proxy config from $PROXY_CONFIG_URL..."
+        if curl --connect-timeout 10 --max-time 30 --retry 3 --retry-delay 2 -fsSL "$PROXY_CONFIG_URL" -o "$CONFIG_PATH.tmp"; then
             mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
             echo "Proxy config downloaded successfully."
         else
@@ -134,6 +135,10 @@ for _s in "$@"; do
 done
 
 CMD="./mtproto-proxy -p $STATS_PORT -H $PORT$SECRET_ARGS -c $MAX_CONNECTIONS --http-stats --allow-skip-dh $NAT_INFO_ARGS"
+
+if [ "$PREFER_IPV6" = "true" ]; then
+    CMD="$CMD -6"
+fi
 
 if [ -n "$PROXY_TAG" ]; then
     CMD="$CMD -P $PROXY_TAG"

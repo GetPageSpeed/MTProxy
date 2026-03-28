@@ -19,6 +19,7 @@
     You are free to remove this exemption from derived works.
 */
 
+#include <assert.h>
 #include <arpa/inet.h>
 #include "mtproto/mtproto-dc-table.h"
 
@@ -53,31 +54,39 @@ static void dc_table_init (void) {
   }
   dc_table_initialized = 1;
 
-  /* Production DCs */
+  /* Production DCs (IPv6 addresses from tdesktop source) */
   prod_table[0] = production_dcs[0];
   prod_table[0].ipv4 = inet_addr ("149.154.175.50");
+  assert (inet_pton (AF_INET6, "2001:0b28:f23d:f001::a", prod_table[0].ipv6) == 1);
 
   prod_table[1] = production_dcs[1];
   prod_table[1].ipv4 = inet_addr ("149.154.167.51");
+  assert (inet_pton (AF_INET6, "2001:067c:04e8:f002::a", prod_table[1].ipv6) == 1);
 
   prod_table[2] = production_dcs[2];
   prod_table[2].ipv4 = inet_addr ("149.154.175.100");
+  assert (inet_pton (AF_INET6, "2001:0b28:f23d:f003::a", prod_table[2].ipv6) == 1);
 
   prod_table[3] = production_dcs[3];
   prod_table[3].ipv4 = inet_addr ("149.154.167.91");
+  assert (inet_pton (AF_INET6, "2001:067c:04e8:f004::a", prod_table[3].ipv6) == 1);
 
   prod_table[4] = production_dcs[4];
   prod_table[4].ipv4 = inet_addr ("91.108.56.100");
+  assert (inet_pton (AF_INET6, "2001:0b28:f23f:f005::a", prod_table[4].ipv6) == 1);
 
   /* Test DCs */
   test_table[0] = test_dcs[0];
   test_table[0].ipv4 = inet_addr ("149.154.175.10");
+  assert (inet_pton (AF_INET6, "2001:0b28:f23d:f001::e", test_table[0].ipv6) == 1);
 
   test_table[1] = test_dcs[1];
   test_table[1].ipv4 = inet_addr ("149.154.167.40");
+  assert (inet_pton (AF_INET6, "2001:067c:04e8:f002::e", test_table[1].ipv6) == 1);
 
   test_table[2] = test_dcs[2];
   test_table[2].ipv4 = inet_addr ("149.154.175.117");
+  assert (inet_pton (AF_INET6, "2001:0b28:f23d:f003::e", test_table[2].ipv6) == 1);
 }
 
 const struct dc_address *direct_dc_lookup (int dc_id) {

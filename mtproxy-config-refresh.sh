@@ -6,9 +6,10 @@
 
 T_CONF=/opt/mtproxy/data/proxy-multi.conf
 T_CONF_DOWNLOAD=/opt/mtproxy/data/proxy-multi.conf-downloaded
+PROXY_CONFIG_URL=${PROXY_CONFIG_URL:-https://core.telegram.org/getProxyConfig}
 
 # Download latest config
-curl -s --max-time 60 https://core.telegram.org/getProxyConfig -o "$T_CONF_DOWNLOAD"
+curl -s --max-time 60 "$PROXY_CONFIG_URL" -o "$T_CONF_DOWNLOAD"
 
 if [ ! -f "$T_CONF_DOWNLOAD" ]; then
   echo "Failed to download MTProxy configuration file to ${T_CONF_DOWNLOAD}!"

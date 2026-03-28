@@ -157,7 +157,10 @@ conn_target_job_t *cfg_parse_server_port (struct mf_config *MC, int flags) {
     memset (default_cfg_ct.target_ipv6, 0, 16);
   } else if (h->h_addrtype == AF_INET6) {
     default_cfg_ct.target.s_addr = 0;
-    memcpy (default_cfg_ct.target_ipv6, h->h_addr, 16);      
+    memcpy (default_cfg_ct.target_ipv6, h->h_addr, 16);
+    kprintf ("WARNING: IPv6 ME relay address detected in config. "
+             "Telegram's IPv6 ME relays have been unreliable since 2023. "
+             "Consider using getProxyConfig (IPv4) or --direct mode instead.\n");
   } else {
     syntax ("cannot resolve hostname");
     return 0;
