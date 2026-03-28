@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.5.3] - 2026-03-28
+
+### Fixed
+- **Stickers and icons failed to load through DRS-enabled proxies** — DRS inter-record delays restarted after every 1-second idle gap, so small files (stickers, icons, avatars) always fell within the slow-start delay window. Added a separate delay counter with a 30-second reset threshold: short idle gaps between sticker loads no longer restart delays, while extended idle periods (>30s) still re-establish DPI camouflage ([#70](https://github.com/GetPageSpeed/MTProxy/issues/70))
+- **Per-secret connection counter went negative** in ME relay mode (e.g. `secret_secret_0_connections: -136`). The increment fired at connection acceptance before the handshake identified the secret, so it was always skipped. Moved the increment to after the handshake succeeds
+
+### Added
+- IPv6 DC addresses for direct-to-DC mode (from tdesktop source)
+- Warning when IPv6 ME relay addresses detected in config (broken server-side since ~2023)
+
 ## [3.5.2] - 2026-03-28
 
 ### Fixed
