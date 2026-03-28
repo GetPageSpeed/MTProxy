@@ -11,6 +11,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Fast compile-only check: ensures no compiler warnings slip through.
+  # The main build uses -Wall but not -Werror, so warnings don't fail the
+  # build for end users on different compiler versions. This CI job adds
+  # -Werror to catch regressions like the dc-table overflow in v3.5.3.
+  build-werror:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libssl-dev zlib1g-dev
+    - name: Build with -Werror
+      run: make clean && make -j$(nproc) EXTRA_CFLAGS="-Werror"
+
   test:
     runs-on: ubuntu-latest
     steps:
