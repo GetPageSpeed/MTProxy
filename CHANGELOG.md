@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 - IPv6 DC addresses for direct-to-DC mode (from tdesktop source)
 - Warning when IPv6 ME relay addresses detected in config (broken server-side since ~2023)
+- **Scheduled weekly fuzz campaign** — runs each fuzz target for 30 minutes with corpus persistence across runs, incremental coverage growth, and auto-filed GitHub issues on crash ([#58](https://github.com/GetPageSpeed/MTProxy/issues/58))
 
 ## [3.5.2] - 2026-03-28
 

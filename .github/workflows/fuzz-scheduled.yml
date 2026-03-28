@@ -1,0 +1,175 @@
+# =============================================================================
+# Scheduled Fuzz Campaign — Deep Coverage Exploration
+# =============================================================================
+#
+# WHY FUZZ MTPROXY?
+#
+#   MTProxy is a public-facing network server that parses untrusted bytes
+#   directly from the internet. The protocol parsers are the primary attack
+#   surface — a single buffer overflow or integer error in TLS/HTTP parsing
+#   means anyone on the internet can crash (or potentially exploit) every
+#   running instance. Fuzzing is the most effective way to find these bugs
+#   before attackers do.
+#
+# WHAT THIS WORKFLOW DOES
+#
+#   Runs each fuzz target for 30 minutes (vs 60 seconds in PR CI), giving
+#   the fuzzer time to explore deep parser states that short runs can't
+#   reach. Combined with corpus persistence, each weekly run starts where
+#   the last one left off — gradually mapping the entire parser state space.
+#
+#   Current fuzz targets:
+#     - fuzz_tls_server_hello  — TLS 1.3 ServerHello validation
+#     - fuzz_tls_client_hello  — SNI extraction + cipher suite parsing
+#     - fuzz_http_request      — HTTP request state machine (/stats endpoint)
+#
+# HOW IT COMPLEMENTS PR FUZZING (.github/workflows/fuzz.yml)
+#
+#   PR fuzzing (60s):  "Did this code change introduce a new crash?"
+#   Weekly campaign:   "Are there bugs in rarely-reached code paths?"
+#
+#   Both are necessary. PR fuzzing catches regressions fast but can't find
+#   deep bugs. Weekly campaigns find deep bugs but run too long for PRs.
+#
+# SANITIZERS (all three active during fuzzing)
+#
+#   - AddressSanitizer (ASan): heap/stack buffer overflows, use-after-free,
+#     double-free, memory leaks. Catches the bugs that lead to RCE.
+#   - UndefinedBehaviorSanitizer (UBSan): signed integer overflow, invalid
+#     shifts, null pointer dereference, out-of-bounds array access. Catches
+#     bugs that compilers "optimize" into security vulnerabilities.
+#   - libFuzzer: coverage-guided mutation engine. Learns which inputs reach
+#     new code paths and mutates them to go deeper. Much more effective than
+#     random input generation.
+#
+# CORPUS PERSISTENCE
+#
+#   The corpus is a set of inputs that trigger unique code paths. libFuzzer
+#   adds new interesting inputs during each run. By caching the corpus
+#   between weekly runs, coverage grows incrementally — the fuzzer never
+#   re-discovers paths it already found. Without persistence, each run
+#   would waste most of its time rediscovering known paths.
+#
+#   Cache key pattern: fuzz-corpus-{run_id} (unique per run)
+#   Restore: prefix match on "fuzz-corpus-" (finds most recent)
+#   Eviction: automatic at GitHub's 10 GB repo cache limit
+#
+# =============================================================================
+
+name: Scheduled Fuzz Campaign
+
+on:
+  schedule:
+    # Weekly: Sunday at 03:00 UTC
+    # Chosen to avoid peak CI hours and give ~90 min of uncontested runner time
+    - cron: '0 3 * * 0'
+
+  # Manual trigger for on-demand deep fuzzing or testing the workflow itself
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: 'Fuzz duration per target in seconds (default: 1800 = 30 min)'
+        default: '1800'
+
+jobs:
+  fuzz-campaign:
+    runs-on: ubuntu-latest
+
+    # Needed for `gh issue create` on crash
+    permissions:
+      issues: write
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang libssl-dev zlib1g-dev
+
+    - name: Build fuzz targets
+      run: make fuzz CC=clang
+
+    # Restore the most recent corpus cache. The corpus grows over time as
+    # the fuzzer discovers inputs that trigger new code paths. Each run
+    # builds on the previous one's discoveries.
+    - name: Restore corpus cache
+      uses: actions/cache/restore@v4
+      with:
+        path: fuzz/corpus
+        key: fuzz-corpus-${{ github.run_id }}
+        restore-keys: fuzz-corpus-
+
+    # Run each target for 30 minutes (default). libFuzzer automatically
+    # saves new interesting inputs to the corpus directory during the run.
+    # Total wall time: ~90 minutes for 3 targets run sequentially.
+    - name: Run fuzz campaign
+      run: make fuzz-run FUZZ_DURATION=${{ github.event.inputs.duration || '1800' }}
+
+    # Always save the corpus, even if a crash was found — the corpus still
+    # grew with useful inputs before the crash, and we want those for next
+    # time. The run_id key ensures each save is unique; GitHub auto-evicts
+    # the oldest entries when the 10 GB cache limit is reached.
+    - name: Save corpus cache
+      if: always()
+      uses: actions/cache/save@v4
+      with:
+        path: fuzz/corpus
+        key: fuzz-corpus-${{ github.run_id }}
+
+    # Upload crash/OOM/timeout reproducer files so they can be downloaded
+    # and replayed locally: ./fuzz_tls_server_hello crash-<hash>
+    - name: Upload crash artifacts
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: fuzz-crashes-${{ github.run_id }}
+        path: |
+          fuzz/crash-*
+          fuzz/oom-*
+          fuzz/timeout-*
+
+    # Auto-file a bug so crashes don't go unnoticed between weekly runs.
+    # Includes a direct link to the workflow run for downloading reproducers.
+    - name: Create issue on crash
+      if: failure()
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # Only create an issue if there are actual crash/oom/timeout files
+        crash_files=$(find fuzz/ -maxdepth 1 -name 'crash-*' -o -name 'oom-*' -o -name 'timeout-*' 2>/dev/null)
+        if [ -z "$crash_files" ]; then
+          echo "No crash files found — failure was likely a build or infra issue"
+          exit 0
+        fi
+
+        crash_list=$(echo "$crash_files" | sed 's/^/- `/' | sed 's/$/`/')
+
+        gh issue create \
+          --title "Fuzz: crash found in scheduled campaign ($(date -u +%Y-%m-%d))" \
+          --label "bug" \
+          --body "$(cat <<EOF
+        ## Scheduled fuzz campaign found a crash
+
+        **Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        **Duration:** ${{ github.event.inputs.duration || '1800' }}s per target
+        **Date:** $(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+        ### Crash files
+
+        $crash_list
+
+        Download the \`fuzz-crashes-${{ github.run_id }}\` artifact from the run above and replay locally:
+
+        \`\`\`bash
+        make fuzz CC=clang
+        ./fuzz/<target> <crash-file>
+        \`\`\`
+
+        ### Next steps
+
+        1. Reproduce locally with the crash file
+        2. Minimize: \`./fuzz/<target> -minimize_crash=1 <crash-file>\`
+        3. Fix the parser bug and add the minimized input to \`fuzz/corpus/\`
+        EOF
+        )"

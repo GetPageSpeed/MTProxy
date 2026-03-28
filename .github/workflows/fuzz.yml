@@ -1,3 +1,23 @@
+# =============================================================================
+# Fuzz Testing — PR Regression Guard
+# =============================================================================
+#
+# Runs each fuzz target for 60 seconds on every push/PR to master.
+# This is a fast smoke test: "Did this code change introduce a parser crash?"
+#
+# For deep coverage exploration (30 min/target, corpus persistence, auto-filed
+# issues on crash), see the weekly scheduled campaign in fuzz-scheduled.yml.
+#
+# Targets:
+#   - fuzz_tls_server_hello  — TLS 1.3 ServerHello record validation
+#   - fuzz_tls_client_hello  — SNI extraction + cipher suite parsing
+#   - fuzz_http_request      — HTTP request state machine (/stats endpoint)
+#
+# All targets run with ASan + UBSan + libFuzzer (coverage-guided).
+# See fuzz-scheduled.yml header for detailed explanation of why fuzzing
+# matters for a public-facing network parser like MTProxy.
+# =============================================================================
+
 name: Fuzz Testing
 
 on:
@@ -20,6 +40,8 @@ jobs:
     - name: Build fuzz targets
       run: make fuzz CC=clang
 
+    # 60s per target — enough to catch regressions from code changes,
+    # not enough for deep exploration (that's what fuzz-scheduled.yml does)
     - name: Run fuzz tests (60s each)
       run: make fuzz-run FUZZ_DURATION=60
 
