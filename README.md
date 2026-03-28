@@ -1,5 +1,7 @@
 # MTProxy by GetPageSpeed
 
+**[Русский](README.ru.md)** | **[فارسی](README.fa.md)** | **[Tiếng Việt](README.vi.md)**
+
 Simple MT-Proto proxy. **[Telegram channel](https://t.me/mtproxy_dev)** for updates.
 
 **This is a fork of MTProxy which includes various improvements and fixes that upstream has not merged due to abandonding their repository.
@@ -36,7 +38,7 @@ The table below compares it with the original and the two main third-party alter
 | Multiple secrets | Yes | Yes (up to 16, with labels) | No | Yes |
 | Anti-replay protection | Weak | Yes | Yes | Partial |
 | Constant-time HMAC | No | Yes | — | Yes |
-| ***Censorship resistance*** | | | | |
+| ***DPI resistance*** | | | | |
 | Custom TLS backend (TCP splitting) | Yes | Yes | No | Yes |
 | Dynamic Record Sizing (DRS) | No | Yes | Yes | No |
 | Traffic mimicry (DRS + timing) | No | Yes | Yes | No |
@@ -60,9 +62,9 @@ The table below compares it with the original and the two main third-party alter
 | Auto config refresh | No | Yes | Yes | Yes |
 | Health checks | No | Yes | Yes | Yes |
 | ***Testing & quality*** | | | | |
-| Fuzz testing (CI) | No | Yes | Yes | Partial |
+| Fuzz testing (CI) | No | Yes | No | Partial |
 | E2E tests (real Telegram clients) | No | Yes | No | No |
-| Static analysis (CI) | No | Yes | — | — |
+| Static analysis (CI) | No | Yes | Yes | — |
 
 > **Why this fork?** Battle-tested C codebase from the official Telegram repository, with TDLib-validated fake-TLS (verified against the [TDLib source](https://github.com/tdlib/td/blob/master/td/mtproto/TlsInit.cpp)), RPM packaging for enterprise deployment, and the most comprehensive CI pipeline (libFuzzer + Telethon E2E + cppcheck + CodeQL).
 
@@ -331,7 +333,7 @@ echo -n "ee${SECRET}" && echo -n $DOMAIN | xxd -plain
 - ✅ **Traffic appears as TLS 1.3**: Harder to detect and block
 - ✅ **Works with modern clients**: Desktop, mobile, and web clients
 - ✅ **Domain flexibility**: Choose any TLS 1.3-capable domain
-- ✅ **Better censorship resistance**: More sophisticated obfuscation
+- ✅ **DPI resistant**: Traffic indistinguishable from standard TLS 1.3
 
 > 📖 **Complete Fake TLS setup guide**: [GetPageSpeed MTProxy - Fake TLS section](https://www.getpagespeed.com/server-setup/mtproxy#fake-tls)
 
@@ -345,7 +347,7 @@ Instead of mimicking a public website, you can run your own web server (e.g., ng
 - The domain's DNS A record points to the MTProxy server
 - Valid MTProxy clients connect normally; all other traffic is forwarded to nginx
 
-**Anti-detection:** Every connection that fails MTProxy validation — wrong secret, expired timestamp, unknown SNI, replayed handshake, malformed ClientHello, or plain non-TLS traffic — is transparently forwarded to the backend rather than rejected with a TLS error. A censor probing the server with a standard browser sees a real HTTPS website, making the proxy indistinguishable from a normal web server under active probing.
+**Active probing resistance:** Every connection that fails MTProxy validation — wrong secret, expired timestamp, unknown SNI, replayed handshake, malformed ClientHello, or plain non-TLS traffic — is transparently forwarded to the backend rather than rejected with a TLS error. Anyone probing the server with a standard browser sees a real HTTPS website, making the proxy indistinguishable from a normal web server under active probing.
 
 **Dynamic Record Sizing (DRS):** TLS connections automatically use graduated record sizes that mimic real HTTPS servers (Cloudflare, Go, Caddy): small MTU-sized records during TCP slow-start (~1450 bytes), ramping to ~4096 bytes, then max TLS payload (~16144 bytes). This defeats statistical traffic analysis that fingerprints proxy traffic by its uniform record sizes. No configuration needed — DRS activates automatically for all TLS connections.
 
