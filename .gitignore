@@ -16,5 +16,6 @@ fuzz/timeout-*
 !README.*.md
 !CHANGELOG.md
 !TESTING.md
+!ARCHITECTURE.md
 tests/regenerate_*.py
 tests/seed_test_media.py
