@@ -67,6 +67,8 @@ The table below compares it with the original and the two main third-party alter
 | Static analysis (CI) | No | Yes | Yes | — |
 
 > **Why this fork?** Battle-tested C codebase from the official Telegram repository, with TDLib-validated fake-TLS (verified against the [TDLib source](https://github.com/tdlib/td/blob/master/td/mtproto/TlsInit.cpp)), RPM packaging for enterprise deployment, and the most comprehensive CI pipeline (libFuzzer + Telethon E2E + cppcheck + CodeQL).
+>
+> For a deep-dive into architecture, performance, safety trade-offs, and language choice analysis, see **[ARCHITECTURE.md](ARCHITECTURE.md)**.
 
 ## Install
 
