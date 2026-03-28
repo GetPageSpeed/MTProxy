@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.5.4] - 2026-03-28
+
+### Fixed
+- **DC table port field silently truncated** — struct initializers put port 443 into the `ipv6[0]` field (unsigned char, truncated to 187) instead of the `port` field, introduced when IPv6 addresses were added. Switched to designated initializers
+- **Use-after-free in buffer chunk cleanup** — `free_block_queue` was accessed after `free(C)` in `free_msg_buffers_chunk_internal`. The prior `memset` masked the bug (pointer was already zeroed), but it was still undefined behavior. Found by the new `-Werror` CI job
+
+### Added
+- **`-Werror` CI build check** — compiles with warnings-as-errors on every push to catch issues like the DC table overflow before release. The main Makefile keeps `-Wall` without `-Werror` for end-user build compatibility
+- **Scheduled weekly fuzz campaign** — runs each fuzz target for 30 minutes with corpus persistence across runs, incremental coverage growth, and auto-filed GitHub issues on crash ([#58](https://github.com/GetPageSpeed/MTProxy/issues/58))
+- README translations: Russian, Farsi, Vietnamese
+
 ## [3.5.3] - 2026-03-28
 
 ### Fixed
@@ -11,7 +22,6 @@ All notable changes to this project will be documented in this file.
 ### Added
 - IPv6 DC addresses for direct-to-DC mode (from tdesktop source)
 - Warning when IPv6 ME relay addresses detected in config (broken server-side since ~2023)
-- **Scheduled weekly fuzz campaign** — runs each fuzz target for 30 minutes with corpus persistence across runs, incremental coverage growth, and auto-filed GitHub issues on crash ([#58](https://github.com/GetPageSpeed/MTProxy/issues/58))
 
 ## [3.5.2] - 2026-03-28
 
