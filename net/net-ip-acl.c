@@ -43,6 +43,7 @@ struct ip_acl {
 
 static struct ip_acl *current_blocklist;
 static struct ip_acl *current_allowlist;
+static struct ip_acl *stats_allowlist;
 static char *blocklist_file;
 static char *allowlist_file;
 
@@ -221,6 +222,54 @@ static char *trim (char *s) {
   return s;
 }
 
+/* Parse a CIDR string (e.g. "100.64.0.0/10", "2001:db8::/32", "10.0.0.1")
+   into a rule struct. The input buffer is modified (slash replaced with NUL).
+   Returns 0 on success, -1 on parse error. */
+static int ip_acl_parse_cidr (char *s, struct ip_acl_rule *rule) {
+  memset (rule, 0, sizeof (*rule));
+
+  char *slash = strchr (s, '/');
+  int explicit_prefix = 0;
+  if (slash) {
+    *slash = '\0';
+    char *endptr;
+    rule->prefix_len = (int)strtol (slash + 1, &endptr, 10);
+    if (*endptr && !isspace ((unsigned char)*endptr)) {
+      return -1;
+    }
+    explicit_prefix = 1;
+  }
+
+  struct in_addr addr4;
+  struct in6_addr addr6;
+
+  if (inet_pton (AF_INET, s, &addr4) == 1) {
+    rule->family = AF_INET;
+    rule->addr.v4 = ntohl (addr4.s_addr);
+    if (!explicit_prefix) {
+      rule->prefix_len = 32;
+    }
+    if (rule->prefix_len < 0 || rule->prefix_len > 32) {
+      return -1;
+    }
+    rule->addr.v4 = mask_v4 (rule->addr.v4, rule->prefix_len);
+  } else if (inet_pton (AF_INET6, s, &addr6) == 1) {
+    rule->family = AF_INET6;
+    memcpy (rule->addr.v6, addr6.s6_addr, 16);
+    if (!explicit_prefix) {
+      rule->prefix_len = 128;
+    }
+    if (rule->prefix_len < 0 || rule->prefix_len > 128) {
+      return -1;
+    }
+    mask_v6 (rule->addr.v6, rule->prefix_len);
+  } else {
+    return -1;
+  }
+
+  return 0;
+}
+
 static struct ip_acl *ip_acl_load (const char *filename) {
   FILE *f = fopen (filename, "r");
   if (!f) {
@@ -241,56 +290,13 @@ static struct ip_acl *ip_acl_load (const char *filename) {
     lineno++;
     char *s = trim (line);
 
-    /* skip empty lines and comments */
     if (!*s || *s == '#') {
       continue;
     }
 
     struct ip_acl_rule rule;
-    memset (&rule, 0, sizeof (rule));
-
-    /* split on '/' for prefix length */
-    char *slash = strchr (s, '/');
-    int explicit_prefix = 0;
-    if (slash) {
-      *slash = '\0';
-      char *endptr;
-      rule.prefix_len = (int)strtol (slash + 1, &endptr, 10);
-      if (*endptr && !isspace ((unsigned char)*endptr)) {
-        kprintf ("ip_acl: %s:%d: invalid prefix length '%s'\n", filename, lineno, slash + 1);
-        continue;
-      }
-      explicit_prefix = 1;
-    }
-
-    /* try IPv4 first */
-    struct in_addr addr4;
-    struct in6_addr addr6;
-
-    if (inet_pton (AF_INET, s, &addr4) == 1) {
-      rule.family = AF_INET;
-      rule.addr.v4 = ntohl (addr4.s_addr);
-      if (!explicit_prefix) {
-        rule.prefix_len = 32;
-      }
-      if (rule.prefix_len < 0 || rule.prefix_len > 32) {
-        kprintf ("ip_acl: %s:%d: invalid IPv4 prefix length %d\n", filename, lineno, rule.prefix_len);
-        continue;
-      }
-      rule.addr.v4 = mask_v4 (rule.addr.v4, rule.prefix_len);
-    } else if (inet_pton (AF_INET6, s, &addr6) == 1) {
-      rule.family = AF_INET6;
-      memcpy (rule.addr.v6, addr6.s6_addr, 16);
-      if (!explicit_prefix) {
-        rule.prefix_len = 128;
-      }
-      if (rule.prefix_len < 0 || rule.prefix_len > 128) {
-        kprintf ("ip_acl: %s:%d: invalid IPv6 prefix length %d\n", filename, lineno, rule.prefix_len);
-        continue;
-      }
-      mask_v6 (rule.addr.v6, rule.prefix_len);
-    } else {
-      kprintf ("ip_acl: %s:%d: cannot parse address '%s'\n", filename, lineno, s);
+    if (ip_acl_parse_cidr (s, &rule) < 0) {
+      kprintf ("ip_acl: %s:%d: cannot parse '%s'\n", filename, lineno, s);
       continue;
     }
 
@@ -346,4 +352,35 @@ int ip_acl_blocklist_count (void) {
 
 int ip_acl_allowlist_count (void) {
   return current_allowlist ? current_allowlist->count : 0;
+}
+
+int ip_acl_add_stats_net (const char *cidr) {
+  char buf[256];
+  int len = snprintf (buf, sizeof (buf), "%s", cidr);
+  if (len <= 0 || len >= (int)sizeof (buf)) {
+    return -1;
+  }
+
+  char *s = trim (buf);
+  if (!*s) {
+    return -1;
+  }
+
+  struct ip_acl_rule rule;
+  if (ip_acl_parse_cidr (s, &rule) < 0) {
+    return -1;
+  }
+
+  if (!stats_allowlist) {
+    stats_allowlist = ip_acl_alloc ();
+    if (!stats_allowlist) {
+      return -1;
+    }
+  }
+
+  return ip_acl_add_rule (stats_allowlist, &rule);
+}
+
+int ip_acl_check_stats_v4 (unsigned ip) {
+  return acl_contains_v4 (stats_allowlist, ip);
 }

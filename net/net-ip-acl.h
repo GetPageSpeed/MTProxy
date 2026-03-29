@@ -35,6 +35,14 @@ int ip_acl_check_v4 (unsigned ip);
    Returns 1 if allowed, 0 if rejected. */
 int ip_acl_check_v6 (const unsigned char ipv6[16]);
 
+/* Add a CIDR range to the stats endpoint allowlist (called during CLI parsing).
+   Can be called multiple times. Returns 0 on success, -1 on parse error. */
+int ip_acl_add_stats_net (const char *cidr);
+
+/* Check whether an IPv4 address (host byte order) is in the stats allowlist.
+   Returns 1 if allowed, 0 if not (default deny when no ranges configured). */
+int ip_acl_check_stats_v4 (unsigned ip);
+
 /* Return count of loaded rules (for stats/debugging). */
 int ip_acl_blocklist_count (void);
 int ip_acl_allowlist_count (void);

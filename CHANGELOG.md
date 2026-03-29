@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.5.5] - 2026-03-30
+
+### Added
+- `--stats-allow-net CIDR` flag to extend stats endpoint access beyond RFC1918 ranges (repeatable, e.g. `--stats-allow-net 100.64.0.0/10` for Tailscale/WireGuard). Docker: `STATS_ALLOW_NET=100.64.0.0/10,fd00::/8` ([#4](https://github.com/teleproxy/teleproxy/issues/4))
+
 ## [3.5.4] - 2026-03-28
 
 ### Fixed

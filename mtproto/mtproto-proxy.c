@@ -1701,7 +1701,7 @@ int hts_stats_execute (connection_job_t c, struct raw_message *msg, int op) {
     D->query_flags &= ~QF_KEEPALIVE;
     return -501;
   }
-  if (!is_private_ip(CONN_INFO(c)->remote_ip)) {
+  if (!is_private_ip(CONN_INFO(c)->remote_ip) && !ip_acl_check_stats_v4(CONN_INFO(c)->remote_ip)) {
     return -404;
   }
 
@@ -2612,6 +2612,12 @@ int f_parse_option (int val) {
   case 2003:
     direct_mode = 1;
     break;
+  case 2004:
+    if (ip_acl_add_stats_net (optarg) < 0) {
+      kprintf ("invalid CIDR for --stats-allow-net: %s\n", optarg);
+      return 2;
+    }
+    break;
   default:
     return -1;
   }
@@ -2633,6 +2639,7 @@ void mtfront_prepare_parse_options (void) {
   parse_option ("ip-blocklist", required_argument, 0, 2001, "path to file with CIDR ranges to reject");
   parse_option ("ip-allowlist", required_argument, 0, 2002, "path to file with CIDR ranges to exclusively allow");
   parse_option ("direct", no_argument, 0, 2003, "connect directly to Telegram DCs instead of through ME relays (incompatible with -P)");
+  parse_option ("stats-allow-net", required_argument, 0, 2004, "CIDR range to allow stats access from, e.g. 100.64.0.0/10 (repeatable)");
 }
 
 void mtfront_parse_extra_args (int argc, char *argv[]) /* {{{ */ {
