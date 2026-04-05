@@ -1,5 +1,6 @@
-> **Note:** This repository is no longer actively maintained.
-> A community fork with ongoing development is available at [teleproxy/teleproxy](https://github.com/teleproxy/teleproxy).
+> [!WARNING]
+> This repository is no longer actively maintained.
+> A community fork with ongoing development is available at **[teleproxy/teleproxy](https://github.com/teleproxy/teleproxy)**.
 
 # MTProxy by GetPageSpeed
 
